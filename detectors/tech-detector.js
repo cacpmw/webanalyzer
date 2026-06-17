@@ -1,0 +1,556 @@
+// tech-detector.js
+// Pure detection logic: given page signals (DOM) + response headers,
+// returns detected technologies with category, confidence and version.
+//
+// No DOM access here — this module is given everything it needs as data,
+// which keeps it testable and lets it run inside the popup context.
+
+const TechDetector = (() => {
+  // Signature database. Each tech can match on:
+  //   headers  -> { 'header-name': /regex/ }   (lowercased header names)
+  //   html     -> [ /regex/, ... ]             (tested against page HTML)
+  //   scripts  -> [ /regex/, ... ]             (tested against each script src)
+  //   meta     -> { metaKey: /regex/ }         (lowercased meta keys)
+  //   globals  -> [ 'WindowName', ... ]        (window globals present)
+  //   cookies  -> [ /regex/, ... ]             (cookie names)
+  //   implies  -> [ 'OtherTech', ... ]         (added if this one matches)
+  //   version  -> { from: 'meta'|'header'|'html'|'script', re: /(\d[\d.]*)/ }
+  //              first capture group is taken as the version string
+  const SIGNATURES = {
+    // --- CMS ---
+    WordPress: {
+      category: "CMS",
+      html: [/wp-content\//i, /wp-includes\//i, /<link[^>]+wp-json/i],
+      meta: { generator: /wordpress/i },
+      globals: ["wp"],
+      implies: ["PHP", "MySQL"],
+      version: { from: "meta", key: "generator", re: /wordpress\s+([\d.]+)/i },
+    },
+    Drupal: {
+      category: "CMS",
+      html: [/sites\/(default|all)\//i, /drupal-settings-json/i],
+      meta: { generator: /drupal/i },
+      globals: ["Drupal"],
+      implies: ["PHP"],
+      version: { from: "meta", key: "generator", re: /drupal\s+([\d.]+)/i },
+    },
+    Joomla: {
+      category: "CMS",
+      html: [/\/media\/jui\//i, /option=com_/i],
+      meta: { generator: /joomla/i },
+      globals: ["Joomla"],
+      implies: ["PHP"],
+      version: { from: "meta", key: "generator", re: /joomla!?\s+([\d.]+)/i },
+    },
+    Ghost: {
+      category: "CMS",
+      html: [/ghost-/i, /content\/images\//i],
+      meta: { generator: /ghost/i },
+      version: { from: "meta", key: "generator", re: /ghost\s+([\d.]+)/i },
+    },
+    Squarespace: {
+      category: "CMS",
+      html: [/static\.squarespace\.com/i, /squarespace-cdn/i],
+    },
+    Wix: {
+      category: "CMS",
+      html: [/static\.wixstatic\.com/i, /wix-warmup-data/i],
+      headers: { "x-wix-request-id": /.*/ },
+    },
+    Webflow: {
+      category: "CMS",
+      html: [/assets\.website-files\.com/i, /data-wf-page/i],
+      meta: { generator: /webflow/i },
+    },
+
+    // --- Ecommerce ---
+    Shopify: {
+      category: "Ecommerce",
+      html: [/cdn\.shopify\.com/i, /shopify\.shop/i],
+      headers: { "x-shopify-stage": /.*/, "x-shopid": /.*/ },
+      globals: ["Shopify"],
+    },
+    Magento: {
+      category: "Ecommerce",
+      html: [/\/static\/version\d+/i, /mage\/cookies/i, /magento/i],
+      implies: ["PHP"],
+    },
+    WooCommerce: {
+      category: "Ecommerce",
+      html: [/woocommerce/i, /wc-block/i],
+      globals: ["wc", "woocommerce_params"],
+      implies: ["WordPress"],
+    },
+    PrestaShop: {
+      category: "Ecommerce",
+      html: [/prestashop/i],
+      meta: { generator: /prestashop/i },
+      implies: ["PHP"],
+    },
+    BigCommerce: {
+      category: "Ecommerce",
+      html: [/cdn\d*\.bigcommerce\.com/i],
+    },
+
+    // --- JS Frameworks ---
+    React: {
+      category: "JS Framework",
+      html: [/data-reactroot/i, /_reactlistening/i, /react-dom/i],
+      scripts: [/react(\.production|\.development)?(\.min)?\.js/i],
+      globals: ["React", "ReactDOM"],
+    },
+    "Next.js": {
+      category: "JS Framework",
+      html: [/id="__next"/i],
+      scripts: [/\/_next\//i],
+      globals: ["__NEXT_DATA__"],
+      implies: ["React", "Node.js"],
+    },
+    "Vue.js": {
+      category: "JS Framework",
+      html: [/data-v-[0-9a-f]{8}/i, /id="app"[^>]+data-server-rendered/i],
+      scripts: [/vue(\.runtime)?(\.min)?\.js/i],
+      globals: ["Vue"],
+    },
+    "Nuxt.js": {
+      category: "JS Framework",
+      scripts: [/\/_nuxt\//i],
+      globals: ["__NUXT__"],
+      implies: ["Vue.js", "Node.js"],
+    },
+    Angular: {
+      category: "JS Framework",
+      html: [/ng-version="([\d.]+)"/i, /\sng-app/i],
+      globals: ["angular", "ng"],
+      version: { from: "html", re: /ng-version="([\d.]+)"/i },
+    },
+    Svelte: {
+      category: "JS Framework",
+      html: [/svelte-[0-9a-z]+/i],
+      globals: ["Svelte"],
+    },
+    Gatsby: {
+      category: "JS Framework",
+      html: [/id="___gatsby"/i],
+      scripts: [/\/page-data\//i],
+      implies: ["React"],
+    },
+    Remix: {
+      category: "JS Framework",
+      globals: ["__remixContext"],
+      implies: ["React"],
+    },
+    "Alpine.js": {
+      category: "JS Framework",
+      html: [/\sx-data[=\s>]/i],
+      globals: ["Alpine"],
+    },
+
+    // --- JS Libraries ---
+    jQuery: {
+      category: "JS Library",
+      scripts: [/jquery[-.]?[\d.]*(\.min)?\.js/i],
+      globals: ["jQuery"],
+      version: { from: "script", re: /jquery[-.]?([\d.]+)(\.min)?\.js/i },
+    },
+    "Lodash": {
+      category: "JS Library",
+      scripts: [/lodash(\.min)?\.js/i],
+    },
+    "Font Awesome": {
+      category: "Font Script",
+      html: [/font-?awesome/i, /fa-[a-z]+/i],
+    },
+    "Google Fonts": {
+      category: "Font Script",
+      html: [/fonts\.googleapis\.com/i, /fonts\.gstatic\.com/i],
+    },
+
+    // --- CSS Frameworks ---
+    Bootstrap: {
+      category: "CSS Framework",
+      html: [/class="[^"]*\b(col-(xs|sm|md|lg|xl)-\d+|navbar-toggler)\b/i],
+      scripts: [/bootstrap(\.bundle)?(\.min)?\.js/i],
+    },
+    "Tailwind CSS": {
+      category: "CSS Framework",
+      html: [/class="[^"]*\b(flex|grid|px-\d|py-\d|text-(xs|sm|lg|xl)|bg-(gray|blue|red|slate|zinc)-\d{3})\b/i],
+    },
+    Elementor: {
+      category: "Page Builder",
+      html: [/elementor-(widget|section|element)/i, /\/uploads\/elementor\//i],
+      globals: ["elementorFrontend"],
+      implies: ["WordPress"],
+    },
+
+    // --- Web Servers (from headers) ---
+    Nginx: {
+      category: "Web Server",
+      headers: { server: /nginx/i },
+      version: { from: "header", key: "server", re: /nginx\/?([\d.]+)?/i },
+    },
+    Apache: {
+      category: "Web Server",
+      headers: { server: /apache/i },
+      version: { from: "header", key: "server", re: /apache\/?([\d.]+)?/i },
+    },
+    "Microsoft IIS": {
+      category: "Web Server",
+      headers: { server: /microsoft-iis/i },
+      implies: ["ASP.NET"],
+      version: { from: "header", key: "server", re: /microsoft-iis\/?([\d.]+)?/i },
+    },
+    LiteSpeed: {
+      category: "Web Server",
+      headers: { server: /litespeed/i },
+    },
+    Caddy: { category: "Web Server", headers: { server: /caddy/i } },
+    OpenResty: {
+      category: "Web Server",
+      headers: { server: /openresty/i },
+    },
+
+    // --- Languages / Backend (from headers + cookies) ---
+    PHP: {
+      category: "Language",
+      headers: { "x-powered-by": /php/i },
+      cookies: [/^phpsessid$/i],
+      version: { from: "header", key: "x-powered-by", re: /php\/?([\d.]+)?/i },
+    },
+    "ASP.NET": {
+      category: "Framework",
+      headers: { "x-powered-by": /asp\.net/i, "x-aspnet-version": /.*/ },
+      cookies: [/^asp\.net_sessionid$/i],
+      version: { from: "header", key: "x-aspnet-version", re: /([\d.]+)/ },
+    },
+    "Node.js": {
+      category: "Language",
+      headers: { "x-powered-by": /express/i },
+    },
+    "Express.js": {
+      category: "Framework",
+      headers: { "x-powered-by": /express/i },
+      implies: ["Node.js"],
+    },
+    "Ruby on Rails": {
+      category: "Framework",
+      headers: { "x-powered-by": /phusion passenger/i, server: /passenger/i },
+      cookies: [/_session_id$/i],
+    },
+    Java: {
+      category: "Language",
+      cookies: [/^jsessionid$/i],
+    },
+    Laravel: {
+      category: "Framework",
+      cookies: [/^laravel_session$/i, /^xsrf-token$/i],
+      implies: ["PHP"],
+    },
+
+    // --- Databases (matched only via implication today; listed so they
+    //     inherit the right category instead of falling back to Unknown) ---
+    MySQL: { category: "Database" },
+    PostgreSQL: { category: "Database" },
+
+    // --- CDN / Cloud / Proxy / Security (from headers) ---
+    Cloudflare: {
+      category: "CDN",
+      headers: {
+        server: /cloudflare/i,
+        "cf-ray": /.*/,
+        "cf-cache-status": /.*/,
+      },
+    },
+    "Amazon CloudFront": {
+      category: "CDN",
+      headers: { "x-amz-cf-id": /.*/, via: /cloudfront/i },
+    },
+    Fastly: {
+      category: "CDN",
+      headers: { "x-served-by": /cache-/i, "x-fastly-request-id": /.*/ },
+    },
+    Akamai: {
+      category: "CDN",
+      headers: { "x-akamai-transformed": /.*/, server: /akamai/i },
+    },
+    Sucuri: {
+      category: "Security",
+      headers: { "x-sucuri-id": /.*/, server: /sucuri/i },
+    },
+    Vercel: {
+      category: "Hosting",
+      headers: { server: /vercel/i, "x-vercel-id": /.*/ },
+    },
+    Netlify: {
+      category: "Hosting",
+      headers: { server: /netlify/i, "x-nf-request-id": /.*/ },
+    },
+    "Amazon S3": {
+      category: "Hosting",
+      headers: { server: /amazons3/i, "x-amz-request-id": /.*/ },
+    },
+    "GitHub Pages": {
+      category: "Hosting",
+      headers: { server: /github\.com/i },
+    },
+
+    // --- Analytics / Tags ---
+    "Google Tag Manager": {
+      category: "Tag Manager",
+      html: [/googletagmanager\.com\/gtm\.js/i],
+      globals: ["dataLayer"],
+    },
+    "Google Analytics": {
+      category: "Analytics",
+      html: [/google-analytics\.com\/(analytics|ga)\.js/i, /gtag\/js\?id=G-/i],
+      globals: ["gtag"],
+    },
+    "Facebook Pixel": {
+      category: "Analytics",
+      html: [/connect\.facebook\.net\/[^/]+\/fbevents\.js/i],
+    },
+    Hotjar: {
+      category: "Analytics",
+      html: [/static\.hotjar\.com/i, /hotjar-/i],
+    },
+
+    // --- Payments ---
+    Stripe: {
+      category: "Payments",
+      scripts: [/js\.stripe\.com/i],
+      globals: ["Stripe"],
+    },
+    PayPal: {
+      category: "Payments",
+      scripts: [/paypal\.com\/sdk/i, /paypalobjects\.com/i],
+    },
+  };
+
+  const WEIGHTS = {
+    headers: 100,
+    cookies: 90,
+    meta: 95,
+    globals: 85,
+    scripts: 80,
+    html: 70,
+  };
+
+  function testRegexList(list, value) {
+    if (!value) return false;
+    return list.some((re) => re.test(value));
+  }
+
+  function extractVersion(sig, signals, headers) {
+    if (!sig.version) return null;
+    const v = sig.version;
+    try {
+      if (v.from === "meta" && signals.meta) {
+        const val = signals.meta[(v.key || "generator").toLowerCase()];
+        const m = val && v.re.exec(val);
+        return m && m[1] ? m[1] : null;
+      }
+      if (v.from === "header") {
+        const val = headers[(v.key || "").toLowerCase()];
+        const m = val && v.re.exec(val);
+        return m && m[1] ? m[1] : null;
+      }
+      if (v.from === "html" && signals.html) {
+        const m = v.re.exec(signals.html);
+        return m && m[1] ? m[1] : null;
+      }
+      if (v.from === "script" && signals.scripts) {
+        for (const s of signals.scripts) {
+          const m = v.re.exec(s);
+          if (m && m[1]) return m[1];
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // Helper: pull a readable snippet around the first regex match in a string.
+  function snippet(re, text, pad = 40) {
+    try {
+      const m = re.exec(text);
+      if (!m) return null;
+      const idx = m.index;
+      const start = Math.max(0, idx - pad);
+      const end = Math.min(text.length, idx + m[0].length + pad);
+      let frag = text.slice(start, end).replace(/\s+/g, " ").trim();
+      if (start > 0) frag = "…" + frag;
+      if (end < text.length) frag = frag + "…";
+      return frag;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function detect(signals, headerData) {
+    const headers = (headerData && headerData.headers) || {};
+    const detected = {};
+
+    Object.entries(SIGNATURES).forEach(([name, sig]) => {
+      let confidence = 0;
+      const matchedOn = [];
+      const evidence = []; // { type, source, detail }
+
+      if (sig.headers) {
+        for (const [hName, re] of Object.entries(sig.headers)) {
+          const hVal = headers[hName.toLowerCase()];
+          if (hVal && re.test(hVal)) {
+            confidence = Math.max(confidence, WEIGHTS.headers);
+            matchedOn.push("headers");
+            evidence.push({
+              type: "header",
+              source: hName,
+              detail: `${hName}: ${hVal}`,
+            });
+            break;
+          }
+        }
+      }
+      if (sig.meta && signals.meta) {
+        for (const [mKey, re] of Object.entries(sig.meta)) {
+          const mVal = signals.meta[mKey.toLowerCase()];
+          if (mVal && re.test(mVal)) {
+            confidence = Math.max(confidence, WEIGHTS.meta);
+            matchedOn.push("meta");
+            evidence.push({
+              type: "meta",
+              source: mKey,
+              detail: `<meta name="${mKey}" content="${mVal}">`,
+            });
+            break;
+          }
+        }
+      }
+      if (sig.globals && signals.globals) {
+        const hit = sig.globals.find((g) => signals.globals.includes(g));
+        if (hit) {
+          confidence = Math.max(confidence, WEIGHTS.globals);
+          matchedOn.push("globals");
+          evidence.push({
+            type: "global",
+            source: hit,
+            detail: `window.${hit} is defined on the page`,
+          });
+        }
+      }
+      if (sig.cookies && signals.cookies) {
+        const hit = signals.cookies.find((c) => testRegexList(sig.cookies, c));
+        if (hit) {
+          confidence = Math.max(confidence, WEIGHTS.cookies);
+          matchedOn.push("cookies");
+          evidence.push({
+            type: "cookie",
+            source: hit,
+            detail: `Cookie named "${hit}" is set`,
+          });
+        }
+      }
+      if (sig.scripts && signals.scripts) {
+        const hit = signals.scripts.find((s) => testRegexList(sig.scripts, s));
+        if (hit) {
+          confidence = Math.max(confidence, WEIGHTS.scripts);
+          matchedOn.push("scripts");
+          evidence.push({
+            type: "script",
+            source: "script src",
+            detail: hit,
+          });
+        }
+      }
+      if (sig.html && signals.html) {
+        const re = sig.html.find((r) => r.test(signals.html));
+        if (re) {
+          confidence = Math.max(confidence, WEIGHTS.html);
+          matchedOn.push("html");
+          evidence.push({
+            type: "html",
+            source: "page HTML",
+            detail: snippet(re, signals.html) || "pattern matched in page source",
+          });
+        }
+      }
+
+      if (confidence > 0) {
+        detected[name] = {
+          name,
+          category: sig.category,
+          confidence,
+          matchedOn,
+          evidence,
+          implied: false,
+          implies: sig.implies || [],
+          version: extractVersion(sig, signals, headers),
+        };
+      }
+    });
+
+    Object.values({ ...detected }).forEach((tech) => {
+      tech.implies.forEach((impliedName) => {
+        if (!detected[impliedName]) {
+          const sig = SIGNATURES[impliedName];
+          detected[impliedName] = {
+            name: impliedName,
+            category: sig ? sig.category : "Unknown",
+            confidence: 50,
+            matchedOn: [`implied by ${tech.name}`],
+            evidence: [{
+              type: "inference",
+              source: tech.name,
+              detail: `${tech.name} was detected, and it uses ${impliedName} as part of its standard stack`,
+            }],
+            implied: true,
+            implies: sig && sig.implies ? sig.implies : [],
+            version: null,
+          };
+        }
+      });
+    });
+
+    return Object.values(detected).sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      return a.category.localeCompare(b.category);
+    });
+  }
+
+  function serverSummary(headerData) {
+    const headers = (headerData && headerData.headers) || {};
+    return {
+      ip: (headerData && headerData.ip) || null,
+      fromCache: (headerData && headerData.fromCache) || false,
+      viaFetch: (headerData && headerData.viaFetch) || false,
+      server: headers["server"] || null,
+      poweredBy: headers["x-powered-by"] || null,
+      via: headers["via"] || null,
+      statusCode: (headerData && headerData.statusCode) || null,
+    };
+  }
+
+  // Identify CDN / protection / security services from the detected list.
+  function protection(headerData) {
+    const headers = (headerData && headerData.headers) || {};
+    const services = [];
+    if (headers["cf-ray"] || /cloudflare/i.test(headers["server"] || "")) {
+      services.push({ name: "Cloudflare", type: "CDN / WAF" });
+    }
+    if (headers["x-sucuri-id"] || /sucuri/i.test(headers["server"] || "")) {
+      services.push({ name: "Sucuri", type: "WAF" });
+    }
+    if (headers["x-amz-cf-id"] || /cloudfront/i.test(headers["via"] || "")) {
+      services.push({ name: "Amazon CloudFront", type: "CDN" });
+    }
+    if (headers["x-akamai-transformed"]) {
+      services.push({ name: "Akamai", type: "CDN" });
+    }
+    if (headers["x-fastly-request-id"]) {
+      services.push({ name: "Fastly", type: "CDN" });
+    }
+    return services;
+  }
+
+  return { detect, serverSummary, protection, SIGNATURES };
+})();
+
+if (typeof window !== "undefined") window.TechDetector = TechDetector;
