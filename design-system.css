@@ -1,0 +1,78 @@
+/* design-system.css
+ * WebAnalyzer design tokens — dark "inspection layers" theme.
+ * Concept: the tool x-rays a site; each detected tech is a revealed layer.
+ * One reserved accent (amber) marks the strongest / primary signal only.
+ */
+
+:root {
+  /* --- Surface palette (cool near-black, layered) --- */
+  --bg-base: #0d1117;        /* deepest background */
+  --bg-surface: #151b23;     /* panels / cards */
+  --bg-surface-2: #1c242e;   /* nested / hover */
+  --bg-inset: #0a0e14;       /* code / data wells */
+
+  /* --- Borders & lines --- */
+  --line: #232c38;
+  --line-strong: #303c4d;
+
+  /* --- Text --- */
+  --text-primary: #e6edf3;
+  --text-secondary: #9aa7b4;
+  --text-muted: #6b7889;
+
+  /* --- Accent (reserved for the single most important signal) --- */
+  --accent: #f0a830;          /* amber */
+  --accent-dim: #b97e1f;
+  --accent-glow: rgba(240, 168, 48, 0.14);
+
+  /* --- Secondary signal (categories, links) --- */
+  --cyan: #4cc4d4;
+  --cyan-dim: #2f8c99;
+
+  /* --- Semantic --- */
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+
+  /* --- Confidence scale (low -> high) --- */
+  --conf-low: #6b7889;
+  --conf-mid: #4cc4d4;
+  --conf-high: #3fb950;
+
+  /* --- Typography --- */
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace,
+    "Cascadia Code", Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+
+  /* --- Spacing (4px base) --- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* --- Radius --- */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* --- Motion --- */
+  --t-fast: 120ms ease;
+  --t-base: 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-base: 0ms;
+  }
+}

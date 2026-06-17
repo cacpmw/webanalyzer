@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="design-system.css" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-mark">
+      <span class="bracket">[</span>WebAnalyzer<span class="bracket">]</span>
+    </div>
+    <div class="app-host" id="host">—</div>
+  </header>
+
+  <nav class="app-tabs" role="tablist">
+    <button class="tab-btn active" data-tab="stack" role="tab" aria-selected="true">Stack</button>
+    <button class="tab-btn" data-tab="network" role="tab" aria-selected="false">Network</button>
+    <button class="tab-btn" data-tab="whois" role="tab" aria-selected="false">WHOIS</button>
+  </nav>
+
+  <main class="app-body" id="body">
+    <!-- ===================== STACK VIEW ===================== -->
+    <div class="tab-view active" id="view-stack">
+      <section class="panel" id="serverPanel">
+        <div class="panel-head">
+          <span class="panel-title">Server &amp; Hosting</span>
+        </div>
+        <div class="panel-body" id="serverBody">
+          <div class="state">
+            <div class="spinner"></div>
+            <div class="state-mono">reading headers…</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="protectionPanel" hidden>
+        <div class="panel-head">
+          <span class="panel-title">Protection &amp; CDN</span>
+        </div>
+        <div class="panel-body" id="protectionBody"></div>
+      </section>
+
+      <section class="panel" id="wpPanel" hidden>
+        <div class="panel-head">
+          <span class="panel-title">WordPress</span>
+          <button class="deep-btn" id="deepBtn" title="Probe REST API and version (makes a few extra requests)">Deep scan</button>
+        </div>
+        <div class="panel-body" id="wpBody"></div>
+      </section>
+
+      <section class="panel" id="techPanel">
+        <div class="panel-head">
+          <span class="panel-title">Detected Stack</span>
+          <span class="panel-count" id="techCount" hidden>0</span>
+        </div>
+        <div class="panel-body" id="techBody">
+          <div class="state">
+            <div class="spinner"></div>
+            <div class="state-mono">analyzing page…</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== NETWORK VIEW ===================== -->
+    <div class="tab-view" id="view-network">
+      <section class="panel" id="dnsPanel">
+        <div class="panel-head">
+          <span class="panel-title">DNS Records</span>
+          <span class="panel-actions">
+            <button class="deep-btn" id="dnsExportBtn" title="Export as a BIND zone file for Cloudflare import" hidden>⤓ Export</button>
+            <button class="deep-btn" id="dnsBtn">Look up</button>
+          </span>
+        </div>
+        <div class="panel-body" id="dnsBody">
+          <div class="state">
+            <div class="state-mono">tap “Look up” to query DNS</div>
+            <div class="state-hint">Fetches A, AAAA, CNAME, MX, NS, TXT, SOA and CAA records via DNS-over-HTTPS.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="subPanel">
+        <div class="panel-head">
+          <span class="panel-title">Subdomains</span>
+          <button class="deep-btn" id="subBtn">Discover</button>
+        </div>
+        <div class="panel-body" id="subBody">
+          <div class="state">
+            <div class="state-mono">tap “Discover” to search</div>
+            <div class="state-hint">Passive lookup via Certificate Transparency logs (crt.sh). Reads public records only — does not probe the target.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== WHOIS VIEW ===================== -->
+    <div class="tab-view" id="view-whois">
+      <section class="panel" id="whoisPanel">
+        <div class="panel-head">
+          <span class="panel-title">WHOIS / Registration</span>
+          <button class="deep-btn" id="whoisBtn">Look up</button>
+        </div>
+        <div class="panel-body" id="whoisBody">
+          <div class="state">
+            <div class="state-mono">tap “Look up” to query WHOIS</div>
+            <div class="state-hint">Registration data via RDAP/WHOIS. Note: most personal contact details (name, email, phone) are redacted by registrars under GDPR and may be unavailable.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <button class="btn" id="rescanBtn">Rescan</button>
+    <button class="btn-ghost" id="logBtn" title="Download diagnostic log">⤓ Log</button>
+    <button class="btn-ghost" id="shotBtn" title="Capture this tab">⎙ Shot</button>
+    <button class="btn-ghost" id="settingsBtn" title="Settings">⚙</button>
+  </footer>
+
+  <script src="detectors/tech-detector.js"></script>
+  <script src="detectors/network-detector.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
