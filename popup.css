@@ -933,3 +933,108 @@ body {
 .sub-item.copied {
   animation: copyFlash 0.6s ease;
 }
+
+/* ===================== Headers tab ===================== */
+
+/* Section grouping (Misconfigured / Recommended / Configured) */
+.hsec {
+  margin-bottom: var(--sp-4);
+}
+.hsec:last-child {
+  margin-bottom: 0;
+}
+
+.hsec-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-1);
+  margin-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.hsec-title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.hsec-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-surface-2);
+  border-radius: var(--r-sm);
+  padding: 0 var(--sp-1);
+}
+
+/* Reuse .layer geometry; header rows align to the top since values wrap. */
+.header-row {
+  align-items: flex-start;
+}
+
+.header-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.header-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.header-value:hover {
+  color: var(--text-primary);
+}
+
+/* Tick colors for the security statuses (extends the Stack tick palette). */
+.layer-tick[data-conf="warn"] { background: var(--warn); }
+.layer-tick[data-conf="bad"] { background: var(--danger); }
+.layer-tick[data-conf="missing"] { background: var(--text-muted); }
+
+/* Importance badge on missing headers */
+.header-imp {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px var(--sp-1);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+}
+.header-imp[data-imp="high"] { color: var(--danger); border-color: var(--danger); }
+.header-imp[data-imp="medium"] { color: var(--warn); border-color: var(--warn); }
+
+/* Status badge on the right of each row */
+.header-status {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+}
+.header-status[data-status="good"] { color: var(--ok); border-color: var(--ok); }
+.header-status[data-status="warning"] { color: var(--warn); border-color: var(--warn); }
+.header-status[data-status="bad"] { color: var(--danger); border-color: var(--danger); }
+.header-status[data-status="missing"] { color: var(--text-muted); border-color: var(--line-strong); }
+
+/* The fix/add label inside header tooltips, reusing the evidence-kind chip. */
+.header-row .evidence-kind {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}

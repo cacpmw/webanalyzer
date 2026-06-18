@@ -17,6 +17,7 @@
     <button class="tab-btn active" data-tab="stack" role="tab" aria-selected="true">Stack</button>
     <button class="tab-btn" data-tab="network" role="tab" aria-selected="false">Network</button>
     <button class="tab-btn" data-tab="whois" role="tab" aria-selected="false">WHOIS</button>
+    <button class="tab-btn" data-tab="headers" role="tab" aria-selected="false">Headers</button>
   </nav>
 
   <main class="app-body" id="body">
@@ -106,6 +107,21 @@
           <div class="state">
             <div class="state-mono">tap “Look up” to query WHOIS</div>
             <div class="state-hint">Registration data via RDAP/WHOIS. Note: most personal contact details (name, email, phone) are redacted by registrars under GDPR and may be unavailable.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== HEADERS VIEW ===================== -->
+    <div class="tab-view" id="view-headers">
+      <section class="panel" id="headersPanel">
+        <div class="panel-head">
+          <span class="panel-title">HTTP Security Headers</span>
+        </div>
+        <div class="panel-body" id="headersBody">
+          <div class="state">
+            <div class="spinner"></div>
+            <div class="state-mono">reading headers…</div>
           </div>
         </div>
       </section>

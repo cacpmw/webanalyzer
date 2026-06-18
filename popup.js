@@ -26,11 +26,14 @@ const els = {
   // WHOIS tab
   whoisBtn: document.getElementById("whoisBtn"),
   whoisBody: document.getElementById("whoisBody"),
+  // Headers tab
+  headersBody: document.getElementById("headersBody"),
 };
 
 let currentTab = null;
 let currentSignals = null;
 let currentTechs = [];
+let currentHeaders = null; // { configured, missing, misconfigured } from analyzeHeaders
 let currentDnsExport = null; // { zone, byType } for the BIND export
 
 // --- Helpers -------------------------------------------------------------
@@ -297,6 +300,117 @@ function highlightDetail(e) {
   return safe;
 }
 
+// --- Headers tab ---------------------------------------------------------
+
+// Map a header status to the confidence-tick color buckets reused from Stack:
+// good -> green (high), warning -> amber, bad -> red.
+function headerTickConf(status) {
+  if (status === "good") return "high";
+  if (status === "bad") return "bad";
+  if (status === "missing") return "missing";
+  return "warn";
+}
+
+// One row in a Headers section. `nameHtml` is already-safe markup; `ariaName`
+// is plain text for the help button. `tip` holds the {head, body} of the
+// ? tooltip (omit for no tooltip).
+function headerRow(nameHtml, ariaName, status, detailHtml, tip) {
+  const help = tip
+    ? `<button class="layer-help" aria-label="About ${escapeHtml(ariaName)}" tabindex="0">?</button>
+       <div class="evidence-tip" role="tooltip">
+         <div class="evidence-tip-head">${escapeHtml(tip.head)}</div>
+         ${tip.body}
+       </div>`
+    : "";
+  return `
+    <div class="header-row layer">
+      <div class="layer-tick" data-conf="${headerTickConf(status)}"></div>
+      <div class="layer-main">
+        <div class="header-name">${nameHtml}</div>
+        ${detailHtml}
+      </div>
+      <span class="header-status" data-status="${escapeHtml(status)}">${escapeHtml(status)}</span>
+      ${help}
+    </div>`;
+}
+
+// A labelled section ("Configured 3", etc.) wrapping its rows.
+function headerSection(label, count, rowsHtml) {
+  return `
+    <div class="hsec">
+      <div class="hsec-head"><span class="hsec-title">${escapeHtml(label)}</span><span class="hsec-count">${count}</span></div>
+      ${rowsHtml}
+    </div>`;
+}
+
+function renderHeaders(analysis) {
+  currentHeaders = analysis;
+  if (!analysis) {
+    renderState(els.headersBody, "no headers captured",
+      "Could not read response headers for this page. Try Rescan, or reload the page.");
+    return;
+  }
+
+  const { configured, missing, misconfigured } = analysis;
+
+  // Misconfigured first (most actionable), then missing (to-do), then the
+  // headers that are already in good shape.
+  const valueHtml = (v) =>
+    `<div class="header-value" data-copy="${escapeHtml(v)}" title="Click to copy">${escapeHtml(v)}</div>`;
+
+  const misRows = misconfigured
+    .map((h) =>
+      headerRow(
+        escapeHtml(h.name),
+        h.name,
+        h.status,
+        valueHtml(h.value),
+        {
+          head: "What's wrong",
+          body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.issue)}</div></div>
+                 <div class="evidence-item"><span class="evidence-kind">fix</span><div class="evidence-detail">${escapeHtml(h.fix)}</div></div>`,
+        }
+      )
+    )
+    .join("");
+
+  const missRows = missing
+    .map((h) =>
+      headerRow(
+        `${escapeHtml(h.name)} <span class="header-imp" data-imp="${escapeHtml(h.importance)}">${escapeHtml(h.importance)}</span>`,
+        h.name,
+        "missing",
+        `<div class="layer-meta">${escapeHtml(h.why)}</div>`,
+        {
+          head: "Why it matters",
+          body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.why)}</div></div>
+                 <div class="evidence-item"><span class="evidence-kind">add</span><div class="evidence-detail">${escapeHtml(h.recommendation)}</div></div>`,
+        }
+      )
+    )
+    .join("");
+
+  const confRows = configured
+    .map((h) =>
+      headerRow(
+        escapeHtml(h.name),
+        h.name,
+        h.status,
+        valueHtml(h.value),
+        { head: "What this does", body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.explanation)}</div></div>` }
+      )
+    )
+    .join("");
+
+  const sections = [];
+  if (misconfigured.length) sections.push(headerSection("Misconfigured", misconfigured.length, misRows));
+  if (missing.length) sections.push(headerSection("Recommended (missing)", missing.length, missRows));
+  if (configured.length) sections.push(headerSection("Configured", configured.length, confRows));
+
+  els.headersBody.innerHTML = sections.join("") ||
+    `<div class="state"><div class="state-mono">no security headers to report</div></div>`;
+}
+
 // --- Data flow -----------------------------------------------------------
 
 const getActiveTab = () =>
@@ -405,6 +519,11 @@ async function run() {
   currentTechs = techs;
   renderTech(techs);
   renderWordPress(safeSignals, techs, null);
+
+  // Security headers analysis — uses the headers already captured above, so
+  // no extra request or cache key is needed. Renders eagerly even though the
+  // Headers tab may not be open yet (same as Stack).
+  renderHeaders(headerData ? TechDetector.analyzeHeaders(headerData.headers) : null);
 }
 
 // --- Events --------------------------------------------------------------
@@ -412,6 +531,7 @@ async function run() {
 els.rescanBtn.addEventListener("click", () => {
   renderState(els.serverBody, "reading headers…");
   renderState(els.techBody, "analyzing page…");
+  renderState(els.headersBody, "reading headers…");
   els.protectionPanel.hidden = true;
   els.wpPanel.hidden = true;
   run();
@@ -1216,6 +1336,7 @@ const COPY_SELECTORS = [
   ".wp-chip", // Stack: WordPress themes/plugins
   ".whois-status", // WHOIS: status codes
   ".sub-name", // Network: subdomain names
+  ".header-value", // Headers: configured/misconfigured header values
 ];
 
 document.body.addEventListener("click", (e) => {
@@ -1238,12 +1359,13 @@ document.body.addEventListener("click", (e) => {
 // escape the panels' overflow:hidden.
 
 function positionTip(helpBtn) {
-  const layer = helpBtn.closest(".layer");
+  // Works for both Stack rows (.layer) and Headers rows (.header-row).
+  const layer = helpBtn.closest(".layer, .header-row");
   const tip = layer && layer.querySelector(".evidence-tip");
   if (!tip) return;
 
-  // Hide any other open tooltip first (only one at a time).
-  els.techBody.querySelectorAll(".evidence-tip.show").forEach((t) => {
+  // Hide any other open tooltip first (only one at a time, anywhere).
+  document.querySelectorAll(".evidence-tip.show").forEach((t) => {
     if (t !== tip) t.classList.remove("show");
   });
 
@@ -1284,25 +1406,30 @@ function positionTip(helpBtn) {
 }
 
 function hideTipFor(helpBtn) {
-  const layer = helpBtn.closest(".layer");
+  const layer = helpBtn.closest(".layer, .header-row");
   const tip = layer && layer.querySelector(".evidence-tip");
   if (tip) tip.classList.remove("show");
 }
 
-// Delegate from the tech body; only the ? icon triggers the tooltip.
-els.techBody.addEventListener("mouseover", (e) => {
-  const help = e.target.closest(".layer-help");
-  if (help) positionTip(help);
-});
-els.techBody.addEventListener("mouseout", (e) => {
-  const help = e.target.closest(".layer-help");
-  if (help && e.relatedTarget !== help) hideTipFor(help);
-});
-els.techBody.addEventListener("focusin", (e) => {
-  const help = e.target.closest(".layer-help");
-  if (help) positionTip(help);
-});
-els.techBody.addEventListener("focusout", (e) => {
-  const help = e.target.closest(".layer-help");
-  if (help) hideTipFor(help);
-});
+// Delegate tooltip triggers from a body; only the ? icon triggers it.
+function wireTooltips(body) {
+  body.addEventListener("mouseover", (e) => {
+    const help = e.target.closest(".layer-help");
+    if (help) positionTip(help);
+  });
+  body.addEventListener("mouseout", (e) => {
+    const help = e.target.closest(".layer-help");
+    if (help && e.relatedTarget !== help) hideTipFor(help);
+  });
+  body.addEventListener("focusin", (e) => {
+    const help = e.target.closest(".layer-help");
+    if (help) positionTip(help);
+  });
+  body.addEventListener("focusout", (e) => {
+    const help = e.target.closest(".layer-help");
+    if (help) hideTipFor(help);
+  });
+}
+
+wireTooltips(els.techBody);
+wireTooltips(els.headersBody);
