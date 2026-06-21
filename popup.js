@@ -720,7 +720,23 @@ async function capturePopup() {
   // pull in our external stylesheet).
   const clone = node.cloneNode(true);
   inlineStyles(node, clone);
-  clone.querySelectorAll(".shot-menu, .log-menu").forEach((n) => n.remove());
+  // Remove nodes that don't belong in a static snapshot. The <script> tags in
+  // particular reference extension-relative URLs that the SVG foreignObject
+  // tries (and fails) to resolve, which aborts the image render. Done after
+  // inlineStyles so its parallel src/dest walk isn't thrown off.
+  clone.querySelectorAll("script, link, style, noscript, .shot-menu, .log-menu")
+    .forEach((n) => n.remove());
+
+  // Capture only the tab the user is viewing. Inactive tab-views are
+  // display:none on screen, but relying on that inlined style to hide them in
+  // the SVG snapshot is unreliable (the expansion below resets their overflow/
+  // height), so every tab rendered stacked under Stack. Drop them outright —
+  // .tab-view.active is exactly what's visible on screen.
+  const activeView = document.querySelector(".tab-view.active");
+  const activeId = activeView && activeView.id;
+  clone.querySelectorAll(".tab-view").forEach((v) => {
+    if (v.id !== activeId) v.remove();
+  });
 
   // Expand the clone so the FULL content is captured, not just the visible
   // 600px viewport. We drop the height caps and inner scroll, then measure the
@@ -780,7 +796,12 @@ async function capturePopup() {
     img.src = dataUrl;
   });
 
-  return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("empty canvas (image may be tainted)"))),
+      "image/png"
+    )
+  );
 }
 
 async function copyImageToClipboard(blob) {
@@ -821,6 +842,7 @@ async function doCapture(action) {
       els.shotBtn.textContent = tr("shot_saved");
     }
   } catch (e) {
+    logEvent("shot", "capture failed", (e && e.message) || String(e));
     els.shotBtn.textContent = tr("shot_failed");
   }
   setTimeout(() => {
