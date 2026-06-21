@@ -40,7 +40,7 @@
       color: var(--text-muted);
       margin-bottom: var(--sp-2);
     }
-    input {
+    input, select {
       width: 100%;
       background: rgba(10, 14, 20, 0.4);
       backdrop-filter: blur(8px);
@@ -52,9 +52,25 @@
       font-size: var(--fs-sm);
       padding: var(--sp-3);
     }
-    input:focus {
+    input:focus, select:focus {
       outline: none;
       border-color: var(--accent);
+    }
+    .section {
+      margin-top: var(--sp-6);
+      padding-top: var(--sp-6);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: var(--fs-lg);
+      margin-bottom: var(--sp-2);
+    }
+    .section-hint {
+      color: var(--text-secondary);
+      font-size: var(--fs-sm);
+      line-height: 1.5;
+      margin-bottom: var(--sp-5);
     }
     .hint {
       font-size: var(--fs-sm);
@@ -98,19 +114,52 @@
   <h1><span class="bracket">[</span>WebAnalyzer<span class="bracket">]</span> <span data-i18n="opt_settings_word">Settings</span></h1>
   <p class="sub" data-i18n="opt_sub">Configuration for the AI analysis integration.</p>
 
-  <div class="field">
-    <label for="webhookUrl"><span data-i18n="opt_webhook_label">n8n Webhook URL</span> <span class="soon" data-i18n="opt_phase2">used in Phase 2</span></label>
-    <input type="url" id="webhookUrl" placeholder="https://your-n8n.example.com/webhook/xxxxxxxx" />
-    <p class="hint" data-i18n="opt_webhook_hint">The production webhook URL from your n8n Webhook node. Use HTTPS and a long, random path.</p>
+  <div class="section">
+    <h2 class="section-title" data-i18n="opt_n8n_section">n8n Webhook</h2>
+
+    <div class="field">
+      <label for="webhookUrl" data-i18n="opt_webhook_label">n8n Webhook URL</label>
+      <input type="url" id="webhookUrl" placeholder="https://your-n8n.example.com/webhook/xxxxxxxx" />
+      <p class="hint" data-i18n="opt_webhook_hint">The production webhook URL from your n8n Webhook node. Use HTTPS and a long, random path.</p>
+    </div>
+
+    <div class="field">
+      <label for="authToken" data-i18n="opt_token_label">Header Auth Token</label>
+      <input type="password" id="authToken" placeholder="your secret token" />
+      <p class="hint" data-i18n="opt_token_hint">Sent as a custom header with each request. Configure the matching Header Auth credential in n8n.</p>
+    </div>
+
+    <p class="section-hint" data-i18n="opt_n8n_hint">AI processing runs inside your own n8n workflow. The extension sends the analysis payload and receives the formatted report back.</p>
   </div>
 
-  <div class="field">
-    <label for="authToken"><span data-i18n="opt_token_label">Header Auth Token</span> <span class="soon" data-i18n="opt_phase2">used in Phase 2</span></label>
-    <input type="password" id="authToken" placeholder="your secret token" />
-    <p class="hint" data-i18n="opt_token_hint">Sent as a custom header with each request. Configure the matching Header Auth credential in n8n.</p>
+  <div class="section">
+    <h2 class="section-title" data-i18n="opt_llm_section">Direct LLM API</h2>
+    <p class="section-hint" data-i18n="opt_llm_hint">The extension calls the LLM provider directly. Your API key is stored locally in your browser and never transmitted to WebAnalyzer servers.</p>
+
+    <div class="field">
+      <label for="llmProvider" data-i18n="opt_llm_provider">LLM Provider</label>
+      <select id="llmProvider">
+        <option value="openai">OpenAI (GPT-4o)</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="custom">Custom URL</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="llmApiKey" data-i18n="opt_llm_apikey">API Key</label>
+      <input type="password" id="llmApiKey" placeholder="sk-..." />
+      <p class="hint" data-i18n="opt_llm_apikey_hint">Stored locally in your browser. Never transmitted to WebAnalyzer servers.</p>
+    </div>
+
+    <div class="field" id="customUrlGroup" style="display:none;">
+      <label for="llmCustomUrl" data-i18n="opt_llm_custom_url">Custom Base URL</label>
+      <input type="url" id="llmCustomUrl" placeholder="https://your-ollama-instance.com/v1" />
+      <p class="hint" data-i18n="opt_llm_custom_url_hint">Base URL for your custom endpoint (e.g. Ollama, Groq, LM Studio). Must be compatible with the OpenAI chat completions API format (/v1/chat/completions).</p>
+    </div>
   </div>
 
-  <div style="display:flex; align-items:center;">
+  <div class="section" style="display:flex; align-items:center;">
     <button id="saveBtn" data-i18n="opt_save">Save settings</button>
     <span class="saved" id="saved" data-i18n="opt_saved">saved ✓</span>
   </div>
