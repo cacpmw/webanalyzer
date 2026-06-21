@@ -3,7 +3,7 @@
 
   "tab_stack": { "message": "Stack" },
   "tab_network": { "message": "Rede" },
-  "tab_whois": { "message": "WHOIS" },
+  "tab_whois": { "message": "Whois" },
   "tab_headers": { "message": "Cabeçalhos" },
 
   "panel_server": { "message": "Servidor e Hospedagem" },
