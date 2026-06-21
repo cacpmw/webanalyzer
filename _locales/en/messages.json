@@ -112,6 +112,8 @@
   "whois_fail_hint": { "message": "Could not reach the WHOIS service." },
   "whois_not_registered": { "message": "not registered" },
   "whois_not_registered_hint": { "message": "This domain appears to be unregistered or has no WHOIS record." },
+  "whois_empty_response": { "message": "no usable registration data" },
+  "whois_empty_response_hint": { "message": "The WHOIS service responded, but returned no registrar, dates or contact fields for this domain." },
   "whois_no_domain_hint": { "message": "Open a website to look up its WHOIS record." },
   "whois_querying_pre": { "message": "querying WHOIS for" },
   "whois_registration": { "message": "Registration" },

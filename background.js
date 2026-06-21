@@ -150,8 +150,10 @@ async function dnsLookupAll(hostname, types) {
 // Sleep helper for retry backoff.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// crt.sh source — with retries for its frequent 502/503 hiccups.
-async function fromCrtSh(baseDomain, attempts = 3) {
+// crt.sh source — with retries for its frequent 502/503 hiccups. Each attempt
+// is logged with its HTTP status so a "0 subdomains" caused by repeated 503s is
+// distinguishable from a domain that genuinely has none.
+async function fromCrtSh(baseDomain, tabId, attempts = 3) {
   const url = `https://crt.sh/?q=%25.${encodeURIComponent(baseDomain)}&output=json`;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -163,8 +165,10 @@ async function fromCrtSh(baseDomain, attempts = 3) {
           const field = entry.name_value || entry.common_name || "";
           String(field).split(/\n/).forEach((n) => names.push(n.trim()));
         });
+        await Logger.append(tabId, "subdomains", `crt.sh attempt ${i + 1}/${attempts} → 200 (${names.length} names)`, null);
         return { names, source: "crt.sh" };
       }
+      await Logger.append(tabId, "subdomains", `crt.sh attempt ${i + 1}/${attempts} → ${resp.status}`, null);
       // 502/503/504 → transient; wait and retry.
       if ([502, 503, 504].includes(resp.status) && i < attempts - 1) {
         await sleep(700 * (i + 1));
@@ -172,6 +176,7 @@ async function fromCrtSh(baseDomain, attempts = 3) {
       }
       return { error: `crt.sh returned ${resp.status}`, names: [] };
     } catch (e) {
+      await Logger.append(tabId, "subdomains", `crt.sh attempt ${i + 1}/${attempts} → network error`, e.message);
       if (i < attempts - 1) {
         await sleep(700 * (i + 1));
         continue;
@@ -183,20 +188,25 @@ async function fromCrtSh(baseDomain, attempts = 3) {
 }
 
 // Fallback source — Cert Spotter (also Certificate Transparency based).
-async function fromCertSpotter(baseDomain) {
+async function fromCertSpotter(baseDomain, tabId) {
   const url = `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(
     baseDomain
   )}&include_subdomains=true&expand=dns_names`;
   try {
     const resp = await fetch(url, { headers: { accept: "application/json" } });
-    if (!resp.ok) return { error: `certspotter returned ${resp.status}`, names: [] };
+    if (!resp.ok) {
+      await Logger.append(tabId, "subdomains", `certspotter → ${resp.status}`, null);
+      return { error: `certspotter returned ${resp.status}`, names: [] };
+    }
     const data = await resp.json();
     const names = [];
     (Array.isArray(data) ? data : []).forEach((entry) => {
       (entry.dns_names || []).forEach((n) => names.push(String(n).trim()));
     });
+    await Logger.append(tabId, "subdomains", `certspotter → 200 (${names.length} names)`, null);
     return { names, source: "certspotter" };
   } catch (e) {
+    await Logger.append(tabId, "subdomains", `certspotter → network error`, e.message);
     return { error: "Could not reach certspotter", names: [] };
   }
 }
@@ -204,12 +214,13 @@ async function fromCertSpotter(baseDomain) {
 // Passive subdomain discovery via Certificate Transparency.
 // Tries crt.sh (with retries); if it yields nothing usable, falls back to
 // Cert Spotter. Neither touches the target's own servers.
-async function subdomainsViaCT(baseDomain) {
-  const primary = await fromCrtSh(baseDomain);
+async function subdomainsViaCT(baseDomain, tabId) {
+  const primary = await fromCrtSh(baseDomain, tabId);
   if (primary.names && primary.names.length) return primary;
 
-  // crt.sh failed or returned empty — try the fallback.
-  const fallback = await fromCertSpotter(baseDomain);
+  // crt.sh failed or returned empty — log the transition and try the fallback.
+  await Logger.append(tabId, "subdomains", `crt.sh empty/failed (${primary.error || "0 names"}), trying certspotter`, null);
+  const fallback = await fromCertSpotter(baseDomain, tabId);
   if (fallback.names && fallback.names.length) return fallback;
 
   // Both failed — surface the most informative error.
@@ -229,8 +240,18 @@ async function whoisLookup(domain, tabId) {
     await Logger.append(tabId, "whois", `who-dat ${domain} [${r.status}]`, d);
     if (!r.ok || !d) {
       const msg = (d && d.error && d.error.message) || `lookup failed (${r.status})`;
+      await Logger.append(tabId, "whois", `who-dat ${domain} parsed [${r.status}] → error: ${msg}`, null);
       return { error: msg };
     }
+    // Parsing outcome: count usable field groups so a "200 but nothing
+    // extracted" is visible in the log, distinct from a transport error.
+    const reg = d.registrar || {}, dt = d.dates || {}, ct = d.contacts || {};
+    const usable =
+      (d.domain ? 1 : 0) +
+      (reg.name || reg.whoisServer ? 1 : 0) +
+      (dt.created || dt.updated || dt.expires ? 1 : 0) +
+      (ct.registrant || ct.admin || ct.tech || ct.billing ? 1 : 0);
+    await Logger.append(tabId, "whois", `who-dat ${domain} parsed [${r.status}] → ${usable} usable field group(s)`, null);
     return d;
   } catch (e) {
     await Logger.append(tabId, "whois", `who-dat ${domain} error`, e.message);
@@ -341,7 +362,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   if (request.action === "subdomains") {
-    subdomainsViaCT(request.baseDomain).then(async (r) => {
+    subdomainsViaCT(request.baseDomain, request.tabId).then(async (r) => {
       await Logger.append(request.tabId, "subdomains", `discover ${request.baseDomain}`, {
         count: (r.names || []).length, source: r.source || null, error: r.error || null,
       });

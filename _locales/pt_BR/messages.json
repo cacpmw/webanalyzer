@@ -112,6 +112,8 @@
   "whois_fail_hint": { "message": "Não foi possível acessar o serviço WHOIS." },
   "whois_not_registered": { "message": "não registrado" },
   "whois_not_registered_hint": { "message": "Este domínio parece não estar registrado ou não possui registro WHOIS." },
+  "whois_empty_response": { "message": "sem dados de registro utilizáveis" },
+  "whois_empty_response_hint": { "message": "O serviço WHOIS respondeu, mas não retornou registrador, datas ou contatos para este domínio." },
   "whois_no_domain_hint": { "message": "Abra um site para consultar seu registro WHOIS." },
   "whois_querying_pre": { "message": "consultando WHOIS de" },
   "whois_registration": { "message": "Registro" },

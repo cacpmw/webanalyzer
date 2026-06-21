@@ -1307,6 +1307,20 @@ function renderWhois(data) {
     registrar.name || registrar.whoisServer ||
     (data.meta && data.meta.server) || null;
 
+  // Responded, no error, but registrar/dates/contacts are all empty — a
+  // distinct outcome from an unregistered domain (handled above) or a transport
+  // error. Mirror contactRows' notion of a "usable" contact.
+  const contactUsable = (c) =>
+    !!(c && (c.name || c.organization || c.email || c.phone || (c.address && c.address.country)));
+  const hasContacts =
+    contactUsable(contacts.registrant) || contactUsable(contacts.admin) ||
+    contactUsable(contacts.tech) || contactUsable(contacts.billing);
+  const hasCore = !!(registrarName || created || updated || expires);
+  if (!hasCore && !hasContacts) {
+    renderState(els.whoisBody, tr("whois_empty_response"), tr("whois_empty_response_hint"));
+    return;
+  }
+
   const coreRows = [];
   if (data.domain) coreRows.push([tr("whois_k_domain"), data.domain]);
   if (registrarName) coreRows.push([tr("whois_k_registrar"), registrarName]);
