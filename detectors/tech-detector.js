@@ -650,6 +650,22 @@ const TechDetector = (() => {
         return { status: "good" };
       },
     },
+    // Deprecated. Unlike the others, this one is NEVER recommended when absent
+    // (legacyOnlyIfPresent) — current best practice is to drop it and rely on
+    // CSP. It only surfaces (in "misconfigured") if a site still sends it, since
+    // check() never returns "good".
+    "x-xss-protection": {
+      name: "X-XSS-Protection",
+      importance: "low",
+      legacyOnlyIfPresent: true,
+      descKey: "hdr_xss_desc",
+      check() {
+        // Any present value is flagged: the legacy reflected-XSS auditor is
+        // unreliable and "1" has itself caused XSS in some browsers. Always a
+        // warning, so a present header lands in misconfigured.
+        return { status: "warning", issueKey: "hdr_xss_legacy_issue", fixKey: "hdr_xss_legacy_fix" };
+      },
+    },
   };
 
   // Analyze captured response headers against the known security headers.
@@ -669,6 +685,10 @@ const TechDetector = (() => {
     Object.entries(SECURITY_HEADERS).forEach(([key, spec]) => {
       const raw = headers[key];
       if (raw === undefined || raw === null || String(raw).trim() === "") {
+        // Deprecated headers (legacyOnlyIfPresent) are only worth flagging when
+        // present with a risky value — never recommend adding them, so skip
+        // entirely instead of pushing to "missing".
+        if (spec.legacyOnlyIfPresent) return;
         missing.push({
           name: spec.name,
           importance: spec.importance,

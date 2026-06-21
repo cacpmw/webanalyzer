@@ -210,5 +210,10 @@
   "hdr_referrer_unsafe_fix": { "message": "Use strict-origin-when-cross-origin." },
   "hdr_referrer_downgrade_issue": { "message": "Sends the full URL to all same-or-stronger-security destinations — more than usually needed." },
   "hdr_referrer_downgrade_fix": { "message": "Tighten to strict-origin-when-cross-origin." },
-  "hdr_permissions_desc": { "message": "Declares which browser features (camera, microphone, geolocation, etc.) the page may use." }
+  "hdr_permissions_desc": { "message": "Declares which browser features (camera, microphone, geolocation, etc.) the page may use." },
+  "hdr_xss_desc": { "message": "Legacy header that toggled the browser's built-in reflected-XSS filter." },
+  "hdr_xss_legacy_issue": { "message": "Deprecated and ignored by modern browsers; the filter it enabled has itself caused XSS in some browsers." },
+  "hdr_xss_legacy_fix": { "message": "Remove this header and rely on a strong Content-Security-Policy instead." },
+  "hdr_partial_warning": { "message": "Partial capture." },
+  "hdr_partial_hint": { "message": "These headers were read via a direct request, so CORS hides most security headers the server may actually send — headers shown as “missing” below may in fact be present." }
 }

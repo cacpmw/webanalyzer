@@ -210,5 +210,10 @@
   "hdr_referrer_unsafe_fix": { "message": "Use strict-origin-when-cross-origin." },
   "hdr_referrer_downgrade_issue": { "message": "Envia a URL completa a todos os destinos de segurança igual ou superior — mais do que o normalmente necessário." },
   "hdr_referrer_downgrade_fix": { "message": "Restrinja para strict-origin-when-cross-origin." },
-  "hdr_permissions_desc": { "message": "Declara quais recursos do navegador (câmera, microfone, geolocalização, etc.) a página pode usar." }
+  "hdr_permissions_desc": { "message": "Declara quais recursos do navegador (câmera, microfone, geolocalização, etc.) a página pode usar." },
+  "hdr_xss_desc": { "message": "Cabeçalho legado que ativava o filtro anti-XSS refletido embutido no navegador." },
+  "hdr_xss_legacy_issue": { "message": "Descontinuado e ignorado por navegadores modernos; o filtro que ele ativava já causou XSS por si só em alguns navegadores." },
+  "hdr_xss_legacy_fix": { "message": "Remova este cabeçalho e confie em uma Content-Security-Policy forte." },
+  "hdr_partial_warning": { "message": "Captura parcial." },
+  "hdr_partial_hint": { "message": "Estes cabeçalhos foram lidos via requisição direta, então o CORS oculta a maioria dos cabeçalhos de segurança que o servidor pode de fato enviar — cabeçalhos exibidos como “ausentes” abaixo podem estar presentes." }
 }

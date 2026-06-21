@@ -369,7 +369,7 @@ function headerSection(label, count, rowsHtml) {
     </div>`;
 }
 
-function renderHeaders(analysis) {
+function renderHeaders(analysis, partial) {
   currentHeaders = analysis;
   if (!analysis) {
     renderState(els.headersBody, tr("st_cant_read"), tr("st_cant_read_hint"));
@@ -432,8 +432,15 @@ function renderHeaders(analysis) {
   if (missing.length) sections.push(headerSection(tr("hsec_missing"), missing.length, missRows));
   if (configured.length) sections.push(headerSection(tr("hsec_configured"), configured.length, confRows));
 
-  els.headersBody.innerHTML = sections.join("") ||
-    `<div class="state"><div class="state-mono">${escapeHtml(tr("hdr_none"))}</div></div>`;
+  // When headers were captured via a direct fetch, CORS hides most security
+  // headers — warn that "missing" rows below may be false negatives. The banner
+  // is informational; the sections still render normally beneath it.
+  const banner = partial
+    ? `<div class="whois-note"><strong>${escapeHtml(tr("hdr_partial_warning"))}</strong> ${escapeHtml(tr("hdr_partial_hint"))}</div>`
+    : "";
+
+  els.headersBody.innerHTML = banner + (sections.join("") ||
+    `<div class="state"><div class="state-mono">${escapeHtml(tr("hdr_none"))}</div></div>`);
 }
 
 // --- Data flow -----------------------------------------------------------
@@ -546,7 +553,10 @@ async function run() {
   // Security headers analysis — uses the headers already captured above, so
   // no extra request or cache key is needed. Renders eagerly even though the
   // Headers tab may not be open yet (same as Stack).
-  renderHeaders(headerData ? TechDetector.analyzeHeaders(headerData.headers, tr) : null);
+  renderHeaders(
+    headerData ? TechDetector.analyzeHeaders(headerData.headers, tr) : null,
+    headerData ? headerData.viaFetch === true : false
+  );
 }
 
 // --- Events --------------------------------------------------------------
