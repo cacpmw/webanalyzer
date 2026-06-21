@@ -10,6 +10,20 @@ const fields = {
 const saveBtn = document.getElementById("saveBtn");
 const saved = document.getElementById("saved");
 
+// i18n: Chrome serves the locale matching the browser UI language, falling
+// back to default_locale (en) for unsupported languages.
+function tr(key) {
+  return chrome.i18n.getMessage(key) || key;
+}
+
+function localizeHtml() {
+  document.title = `WebAnalyzer · ${tr("opt_settings_word")}`;
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const m = tr(el.dataset.i18n);
+    if (m) el.textContent = m;
+  });
+}
+
 function load() {
   chrome.storage.local.get(["webhookUrl", "authToken"], (cfg) => {
     if (cfg.webhookUrl) fields.webhookUrl.value = cfg.webhookUrl;
@@ -29,4 +43,7 @@ function save() {
 }
 
 saveBtn.addEventListener("click", save);
-document.addEventListener("DOMContentLoaded", load);
+document.addEventListener("DOMContentLoaded", () => {
+  localizeHtml();
+  load();
+});

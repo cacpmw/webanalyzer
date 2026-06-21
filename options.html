@@ -95,24 +95,24 @@
   </style>
 </head>
 <body>
-  <h1><span class="bracket">[</span>WebAnalyzer<span class="bracket">]</span> Settings</h1>
-  <p class="sub">Configuration for the AI analysis integration.</p>
+  <h1><span class="bracket">[</span>WebAnalyzer<span class="bracket">]</span> <span data-i18n="opt_settings_word">Settings</span></h1>
+  <p class="sub" data-i18n="opt_sub">Configuration for the AI analysis integration.</p>
 
   <div class="field">
-    <label for="webhookUrl">n8n Webhook URL <span class="soon">used in Phase 2</span></label>
+    <label for="webhookUrl"><span data-i18n="opt_webhook_label">n8n Webhook URL</span> <span class="soon" data-i18n="opt_phase2">used in Phase 2</span></label>
     <input type="url" id="webhookUrl" placeholder="https://your-n8n.example.com/webhook/xxxxxxxx" />
-    <p class="hint">The production webhook URL from your n8n Webhook node. Use HTTPS and a long, random path.</p>
+    <p class="hint" data-i18n="opt_webhook_hint">The production webhook URL from your n8n Webhook node. Use HTTPS and a long, random path.</p>
   </div>
 
   <div class="field">
-    <label for="authToken">Header Auth Token <span class="soon">used in Phase 2</span></label>
+    <label for="authToken"><span data-i18n="opt_token_label">Header Auth Token</span> <span class="soon" data-i18n="opt_phase2">used in Phase 2</span></label>
     <input type="password" id="authToken" placeholder="your secret token" />
-    <p class="hint">Sent as a custom header with each request. Configure the matching Header Auth credential in n8n.</p>
+    <p class="hint" data-i18n="opt_token_hint">Sent as a custom header with each request. Configure the matching Header Auth credential in n8n.</p>
   </div>
 
   <div style="display:flex; align-items:center;">
-    <button id="saveBtn">Save settings</button>
-    <span class="saved" id="saved">saved ✓</span>
+    <button id="saveBtn" data-i18n="opt_save">Save settings</button>
+    <span class="saved" id="saved" data-i18n="opt_saved">saved ✓</span>
   </div>
 
   <script src="options.js"></script>

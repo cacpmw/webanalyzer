@@ -36,6 +36,33 @@ let currentTechs = [];
 let currentHeaders = null; // { configured, missing, misconfigured } from analyzeHeaders
 let currentDnsExport = null; // { zone, byType } for the BIND export
 
+// --- i18n ----------------------------------------------------------------
+// Thin wrapper over chrome.i18n. Chrome selects the locale from the browser
+// UI language and falls back to default_locale (en) when there's no matching
+// translation — so unsupported languages get English automatically.
+// `subs` may be a string or an array of up to 9 substitution strings.
+function tr(key, subs) {
+  const msg = chrome.i18n.getMessage(key, subs);
+  return msg || key;
+}
+
+// Apply translations to static markup. Elements opt in via data-i18n
+// (textContent), data-i18n-title (title attr), or data-i18n-placeholder.
+function localizeHtml(root = document) {
+  root.querySelectorAll("[data-i18n]").forEach((el) => {
+    const m = tr(el.dataset.i18n);
+    if (m) el.textContent = m;
+  });
+  root.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const m = tr(el.dataset.i18nTitle);
+    if (m) el.title = m;
+  });
+  root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const m = tr(el.dataset.i18nPlaceholder);
+    if (m) el.placeholder = m;
+  });
+}
+
 // --- Helpers -------------------------------------------------------------
 
 // Copy text to the clipboard and flash the source element as feedback.
@@ -106,11 +133,11 @@ function renderState(container, message, hint) {
 
 function renderServer(summary, behindCdn) {
   const proxyNote = behindCdn
-    ? '<span class="kv-hint">(CDN edge, not origin)</span>'
-    : summary.fromCache ? '<span class="kv-hint">(via DNS)</span>' : "";
+    ? `<span class="kv-hint">${escapeHtml(tr("server_cdn_note"))}</span>`
+    : summary.fromCache ? `<span class="kv-hint">${escapeHtml(tr("server_dns_note"))}</span>` : "";
   const ipVal = summary.ip
     ? `${escapeHtml(summary.ip)}<span id="stack-ip-flag" class="ip-flag-slot"></span>${proxyNote}`
-    : '<span class="kv-val empty">resolving…</span>';
+    : `<span class="kv-val empty">${escapeHtml(tr("server_resolving"))}</span>`;
 
   const rows = [
     ["IP", summary.ip ? ipVal : null, true],
@@ -124,7 +151,7 @@ function renderServer(summary, behindCdn) {
     .map(([key, val, isHtml]) => {
       const empty = val === null || val === undefined || val === "";
       const content = empty
-        ? "not exposed"
+        ? escapeHtml(tr("server_not_exposed"))
         : isHtml ? val : escapeHtml(val);
       return `
         <div class="kv">
@@ -138,7 +165,7 @@ function renderServer(summary, behindCdn) {
     els.serverBody.innerHTML += `
       <div class="kv">
         <span class="kv-key"></span>
-        <span class="kv-hint">headers read via direct request — some may be hidden by CORS</span>
+        <span class="kv-hint">${escapeHtml(tr("server_cors_note"))}</span>
       </div>`;
   }
 
@@ -186,7 +213,7 @@ function renderWordPress(signals, techs, deep) {
       ? `<div class="wp-chips">${arr
           .map((n) => `<span class="wp-chip ${cls}">${escapeHtml(n)}</span>`)
           .join("")}</div>`
-      : `<span class="wp-empty">none visible in page source</span>`;
+      : `<span class="wp-empty">${escapeHtml(tr("wp_none_visible"))}</span>`;
 
   // Merge plugins found in HTML with any found via deep scan REST namespaces.
   let plugins = [...wp.plugins];
@@ -200,28 +227,27 @@ function renderWordPress(signals, techs, deep) {
   els.wpBody.innerHTML = `
     ${version ? `
     <div class="wp-group">
-      <div class="wp-group-label">Version</div>
+      <div class="wp-group-label">${escapeHtml(tr("wp_version"))}</div>
       <div class="wp-chips"><span class="wp-chip">${escapeHtml(version)}</span></div>
     </div>` : ""}
     <div class="wp-group">
-      <div class="wp-group-label">Theme${wp.themes.length > 1 ? "s" : ""}</div>
+      <div class="wp-group-label">${escapeHtml(wp.themes.length > 1 ? tr("wp_themes") : tr("wp_theme"))}</div>
       ${chips(wp.themes, "theme")}
     </div>
     <div class="wp-group">
-      <div class="wp-group-label">Plugins (front-end visible)</div>
+      <div class="wp-group-label">${escapeHtml(tr("wp_plugins"))}</div>
       ${chips(plugins, "plugin")}
     </div>
     ${deep && deep.restApi ? `
     <div class="wp-group">
-      <div class="wp-group-label">REST API</div>
-      <div class="wp-chips"><span class="wp-chip">/wp-json/ exposed</span></div>
+      <div class="wp-group-label">${escapeHtml(tr("wp_restapi"))}</div>
+      <div class="wp-chips"><span class="wp-chip">${escapeHtml(tr("wp_restapi_exposed"))}</span></div>
     </div>` : ""}`;
 }
 
 function renderTech(techs) {
   if (!techs.length) {
-    renderState(els.techBody, "no technologies detected",
-      "This page exposes few public signals, or it loads its stack dynamically.");
+    renderState(els.techBody, tr("tech_none"), tr("tech_none_hint"));
     els.techCount.hidden = true;
     return;
   }
@@ -232,8 +258,8 @@ function renderTech(techs) {
     .map((t, i) => {
       const bucket = confBucket(t);
       const meta = t.implied
-        ? "inferred from related tech"
-        : `${t.confidence}% · matched on ${t.matchedOn.join(", ")}`;
+        ? tr("tech_inferred_meta")
+        : `${t.confidence}% · ${tr("tech_matched_on")} ${t.matchedOn.join(", ")}`;
       const ver = t.version ? `<span class="layer-version">v${escapeHtml(t.version)}</span>` : "";
       const hasEv = t.evidence && t.evidence.length;
       const help = hasEv
@@ -244,7 +270,7 @@ function renderTech(techs) {
           <div class="layer-tick" data-conf="${bucket}"></div>
           <div class="layer-main">
             <div class="layer-name">${escapeHtml(t.name)}${ver}${
-        t.implied ? '<span class="implied-tag">inferred</span>' : ""
+        t.implied ? `<span class="implied-tag">${escapeHtml(tr("tech_inferred_tag"))}</span>` : ""
       }</div>
             <div class="layer-meta">${escapeHtml(meta)}</div>
           </div>
@@ -262,13 +288,13 @@ function renderEvidenceTip(t) {
   if (!ev.length) return "";
 
   const kindLabel = {
-    header: "HTTP header",
-    meta: "meta tag",
-    global: "JS global",
-    cookie: "cookie",
-    script: "script URL",
-    html: "page HTML",
-    inference: "inference",
+    header: tr("ev_header"),
+    meta: tr("ev_meta"),
+    global: tr("ev_global"),
+    cookie: tr("ev_cookie"),
+    script: tr("ev_script"),
+    html: tr("ev_html"),
+    inference: tr("ev_inference"),
   };
 
   const items = ev
@@ -284,7 +310,7 @@ function renderEvidenceTip(t) {
 
   return `
     <div class="evidence-tip" role="tooltip">
-      <div class="evidence-tip-head">Why this was detected</div>
+      <div class="evidence-tip-head">${escapeHtml(tr("tech_why"))}</div>
       ${items}
     </div>`;
 }
@@ -316,7 +342,7 @@ function headerTickConf(status) {
 // ? tooltip (omit for no tooltip).
 function headerRow(nameHtml, ariaName, status, detailHtml, tip) {
   const help = tip
-    ? `<button class="layer-help" aria-label="About ${escapeHtml(ariaName)}" tabindex="0">?</button>
+    ? `<button class="layer-help" aria-label="${escapeHtml(tr("aria_about") + " " + ariaName)}" tabindex="0">?</button>
        <div class="evidence-tip" role="tooltip">
          <div class="evidence-tip-head">${escapeHtml(tip.head)}</div>
          ${tip.body}
@@ -329,7 +355,7 @@ function headerRow(nameHtml, ariaName, status, detailHtml, tip) {
         <div class="header-name">${nameHtml}</div>
         ${detailHtml}
       </div>
-      <span class="header-status" data-status="${escapeHtml(status)}">${escapeHtml(status)}</span>
+      <span class="header-status" data-status="${escapeHtml(status)}">${escapeHtml(tr("hdr_status_" + status))}</span>
       ${help}
     </div>`;
 }
@@ -346,8 +372,7 @@ function headerSection(label, count, rowsHtml) {
 function renderHeaders(analysis) {
   currentHeaders = analysis;
   if (!analysis) {
-    renderState(els.headersBody, "no headers captured",
-      "Could not read response headers for this page. Try Rescan, or reload the page.");
+    renderState(els.headersBody, tr("st_cant_read"), tr("st_cant_read_hint"));
     return;
   }
 
@@ -356,7 +381,7 @@ function renderHeaders(analysis) {
   // Misconfigured first (most actionable), then missing (to-do), then the
   // headers that are already in good shape.
   const valueHtml = (v) =>
-    `<div class="header-value" data-copy="${escapeHtml(v)}" title="Click to copy">${escapeHtml(v)}</div>`;
+    `<div class="header-value" data-copy="${escapeHtml(v)}" title="${escapeHtml(tr("sub_copy_title"))}">${escapeHtml(v)}</div>`;
 
   const misRows = misconfigured
     .map((h) =>
@@ -366,9 +391,9 @@ function renderHeaders(analysis) {
         h.status,
         valueHtml(h.value),
         {
-          head: "What's wrong",
+          head: tr("htip_wrong"),
           body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.issue)}</div></div>
-                 <div class="evidence-item"><span class="evidence-kind">fix</span><div class="evidence-detail">${escapeHtml(h.fix)}</div></div>`,
+                 <div class="evidence-item"><span class="evidence-kind">${escapeHtml(tr("htip_fix"))}</span><div class="evidence-detail">${escapeHtml(h.fix)}</div></div>`,
         }
       )
     )
@@ -377,14 +402,14 @@ function renderHeaders(analysis) {
   const missRows = missing
     .map((h) =>
       headerRow(
-        `${escapeHtml(h.name)} <span class="header-imp" data-imp="${escapeHtml(h.importance)}">${escapeHtml(h.importance)}</span>`,
+        `${escapeHtml(h.name)} <span class="header-imp" data-imp="${escapeHtml(h.importance)}">${escapeHtml(tr("hdr_imp_" + h.importance))}</span>`,
         h.name,
         "missing",
         `<div class="layer-meta">${escapeHtml(h.why)}</div>`,
         {
-          head: "Why it matters",
+          head: tr("htip_why"),
           body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.why)}</div></div>
-                 <div class="evidence-item"><span class="evidence-kind">add</span><div class="evidence-detail">${escapeHtml(h.recommendation)}</div></div>`,
+                 <div class="evidence-item"><span class="evidence-kind">${escapeHtml(tr("htip_add"))}</span><div class="evidence-detail">${escapeHtml(h.recommendation)}</div></div>`,
         }
       )
     )
@@ -397,18 +422,18 @@ function renderHeaders(analysis) {
         h.name,
         h.status,
         valueHtml(h.value),
-        { head: "What this does", body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.explanation)}</div></div>` }
+        { head: tr("htip_does"), body: `<div class="evidence-item"><div class="evidence-detail">${escapeHtml(h.explanation)}</div></div>` }
       )
     )
     .join("");
 
   const sections = [];
-  if (misconfigured.length) sections.push(headerSection("Misconfigured", misconfigured.length, misRows));
-  if (missing.length) sections.push(headerSection("Recommended (missing)", missing.length, missRows));
-  if (configured.length) sections.push(headerSection("Configured", configured.length, confRows));
+  if (misconfigured.length) sections.push(headerSection(tr("hsec_misconfigured"), misconfigured.length, misRows));
+  if (missing.length) sections.push(headerSection(tr("hsec_missing"), missing.length, missRows));
+  if (configured.length) sections.push(headerSection(tr("hsec_configured"), configured.length, confRows));
 
   els.headersBody.innerHTML = sections.join("") ||
-    `<div class="state"><div class="state-mono">no security headers to report</div></div>`;
+    `<div class="state"><div class="state-mono">${escapeHtml(tr("hdr_none"))}</div></div>`;
 }
 
 // --- Data flow -----------------------------------------------------------
@@ -468,11 +493,10 @@ async function run() {
 
   if (!tab || !tab.url || !/^https?:/i.test(tab.url)) {
     els.host.textContent = "—";
-    renderState(els.serverBody, "unsupported page",
-      "Open a normal http(s) website to analyze its stack.");
+    renderState(els.serverBody, tr("st_unsupported"), tr("st_unsupported_hint"));
     els.protectionPanel.hidden = true;
     els.wpPanel.hidden = true;
-    renderState(els.techBody, "nothing to analyze");
+    renderState(els.techBody, tr("st_nothing"));
     els.techCount.hidden = true;
     return;
   }
@@ -508,8 +532,7 @@ async function run() {
   };
 
   if (!signals && !headerData) {
-    renderState(els.techBody, "could not read page",
-      "Try rescanning, or reload the page and reopen this panel.");
+    renderState(els.techBody, tr("st_cant_read"), tr("st_cant_read_hint"));
     els.techCount.hidden = true;
     els.wpPanel.hidden = true;
     return;
@@ -523,15 +546,15 @@ async function run() {
   // Security headers analysis — uses the headers already captured above, so
   // no extra request or cache key is needed. Renders eagerly even though the
   // Headers tab may not be open yet (same as Stack).
-  renderHeaders(headerData ? TechDetector.analyzeHeaders(headerData.headers) : null);
+  renderHeaders(headerData ? TechDetector.analyzeHeaders(headerData.headers, tr) : null);
 }
 
 // --- Events --------------------------------------------------------------
 
 els.rescanBtn.addEventListener("click", () => {
-  renderState(els.serverBody, "reading headers…");
-  renderState(els.techBody, "analyzing page…");
-  renderState(els.headersBody, "reading headers…");
+  renderState(els.serverBody, tr("st_reading_headers"));
+  renderState(els.techBody, tr("st_analyzing_page"));
+  renderState(els.headersBody, tr("st_reading_headers"));
   els.protectionPanel.hidden = true;
   els.wpPanel.hidden = true;
   run();
@@ -621,8 +644,8 @@ function showLogMenu() {
   logMenuEl = document.createElement("div");
   logMenuEl.className = "log-menu";
   logMenuEl.innerHTML = `
-    <button data-fmt="json">Download JSON</button>
-    <button data-fmt="txt">Download TXT</button>`;
+    <button data-fmt="json">${escapeHtml(tr("log_json"))}</button>
+    <button data-fmt="txt">${escapeHtml(tr("log_txt"))}</button>`;
   document.body.appendChild(logMenuEl);
   const r = els.logBtn.getBoundingClientRect();
   logMenuEl.style.left = `${Math.round(r.left)}px`;
@@ -764,22 +787,22 @@ function downloadBlob(blob, filename) {
 async function doCapture(action) {
   hideShotMenu();
   const prevText = els.shotBtn.textContent;
-  els.shotBtn.textContent = "capturing…";
+  els.shotBtn.textContent = tr("shot_capturing");
   els.shotBtn.disabled = true;
   try {
     const blob = await capturePopup();
     if (!blob) throw new Error("capture failed");
     if (action === "copy") {
       const ok = await copyImageToClipboard(blob);
-      els.shotBtn.textContent = ok ? "copied ✓" : "copy failed";
+      els.shotBtn.textContent = ok ? tr("shot_copied") : tr("shot_copy_failed");
     } else {
       const host = (currentHostname() || "tab").replace(/[^a-z0-9.-]/gi, "_");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       downloadBlob(blob, `webanalyzer_${host}_${stamp}.png`);
-      els.shotBtn.textContent = "saved ✓";
+      els.shotBtn.textContent = tr("shot_saved");
     }
   } catch (e) {
-    els.shotBtn.textContent = "failed";
+    els.shotBtn.textContent = tr("shot_failed");
   }
   setTimeout(() => {
     els.shotBtn.textContent = prevText;
@@ -794,8 +817,8 @@ function showShotMenu() {
   shotMenuEl = document.createElement("div");
   shotMenuEl.className = "log-menu shot-menu";
   shotMenuEl.innerHTML = `
-    <button data-act="copy">Copy to clipboard</button>
-    <button data-act="download">Download PNG</button>`;
+    <button data-act="copy">${escapeHtml(tr("shot_copy"))}</button>
+    <button data-act="download">${escapeHtml(tr("shot_download"))}</button>`;
   document.body.appendChild(shotMenuEl);
   const r = els.shotBtn.getBoundingClientRect();
   shotMenuEl.style.left = `${Math.round(r.left)}px`;
@@ -824,7 +847,7 @@ document.addEventListener("click", (e) => {
 els.deepBtn.addEventListener("click", async () => {
   if (!currentTab) return;
   els.deepBtn.disabled = true;
-  els.deepBtn.textContent = "scanning…";
+  els.deepBtn.textContent = tr("deep_scanning");
   const deep = await runDeepScan(currentTab.id);
   // Reuse the techs computed during the main run (which had headers),
   // so the WordPress panel doesn't disappear.
@@ -833,10 +856,13 @@ els.deepBtn.addEventListener("click", async () => {
     currentTechs,
     deep
   );
-  els.deepBtn.textContent = "Deep scan ✓";
+  els.deepBtn.textContent = tr("deep_done");
 });
 
-document.addEventListener("DOMContentLoaded", run);
+document.addEventListener("DOMContentLoaded", () => {
+  localizeHtml();
+  run();
+});
 
 // --- Tab navigation ------------------------------------------------------
 let networkLoaded = false; // run the Network lookups only once, on first open
@@ -945,7 +971,7 @@ function currentHostname() {
 // it appears at only one of them.
 function renderDns(hostname, base, hostResults, baseResults) {
   if (!hostResults && !baseResults) {
-    renderState(els.dnsBody, "lookup failed", "Could not reach the DNS resolver. Try again.");
+    renderState(els.dnsBody, tr("dns_fail"), tr("dns_fail_hint"));
     return;
   }
 
@@ -955,7 +981,8 @@ function renderDns(hostname, base, hostResults, baseResults) {
   baseResults = baseResults || {};
 
   els.dnsBody.innerHTML = types
-    .map(({ type, label }) => {
+    .map(({ type }) => {
+      const label = tr("dns_label_" + type);
       const hostEntries = NetworkTools.parseAnswers(hostResults[type] || [], type);
       const baseEntries = sameLevel
         ? []
@@ -983,8 +1010,8 @@ function renderDns(hostname, base, hostResults, baseResults) {
               // (and the two levels actually differ).
               let tag = "";
               if (!sameLevel && !(e.host && e.base)) {
-                const where = e.host ? "host" : "domain";
-                tag = `<span class="dns-origin">${where}</span>`;
+                const where = e.host ? tr("dns_origin_host") : tr("dns_origin_domain");
+                tag = `<span class="dns-origin">${escapeHtml(where)}</span>`;
               }
               // For IP records, add a flag slot to be filled asynchronously.
               const flagSlot = isIpType
@@ -995,7 +1022,7 @@ function renderDns(hostname, base, hostResults, baseResults) {
               }${tag}</div>`;
             })
             .join("")
-        : `<div class="dns-value none">no records</div>`;
+        : `<div class="dns-value none">${escapeHtml(tr("dns_no_records"))}</div>`;
 
       return `
         <div class="dns-group">
@@ -1049,29 +1076,27 @@ function renderDns(hostname, base, hostResults, baseResults) {
 
 function renderSubdomains(base, data) {
   if (!data || data.error) {
-    renderState(els.subBody, "discovery failed",
-      (data && data.error) || "Could not reach the Certificate Transparency log.");
+    renderState(els.subBody, tr("sub_fail"),
+      (data && data.error) || tr("sub_fail_hint"));
     return;
   }
   const subs = NetworkTools.normalizeSubdomains(data.names || [], base);
   if (!subs.length) {
-    renderState(els.subBody, "no subdomains found",
-      "No certificates referencing subdomains of this domain were found in CT logs.");
+    renderState(els.subBody, tr("sub_none"), tr("sub_none_hint"));
     return;
   }
-  const via = data.source ? ` (via ${escapeHtml(data.source)})` : "";
+  const via = data.source ? ` (${tr("word_via")} ${escapeHtml(data.source)})` : "";
+  const noun = subs.length === 1 ? tr("sub_one") : tr("sub_many");
   els.subBody.innerHTML = `
-    <div class="sub-summary"><span class="count">${subs.length}</span> subdomain${
-    subs.length === 1 ? "" : "s"
-  } found via Certificate Transparency${via}</div>
+    <div class="sub-summary"><span class="count">${subs.length}</span> ${escapeHtml(noun)} ${escapeHtml(tr("sub_found_ct"))}${via}</div>
     <div class="sub-list">
       ${subs
         .map(
           (s) =>
             `<div class="sub-item">
-              <span class="sub-name" data-copy="${escapeHtml(s)}" title="Click to copy">${escapeHtml(s)}</span>
+              <span class="sub-name" data-copy="${escapeHtml(s)}" title="${escapeHtml(tr("sub_copy_title"))}">${escapeHtml(s)}</span>
               <span class="sub-actions">
-                <button class="sub-act sub-open" data-host="${escapeHtml(s)}" title="Open in a new tab" aria-label="Open ${escapeHtml(s)}">↗</button>
+                <button class="sub-act sub-open" data-host="${escapeHtml(s)}" title="${escapeHtml(tr("sub_open_title"))}" aria-label="${escapeHtml(tr("sub_open") + " " + s)}">↗</button>
               </span>
             </div>`
         )
@@ -1082,7 +1107,7 @@ function renderSubdomains(base, data) {
 async function runDnsLookup(forceRefresh = false) {
   const hostname = currentHostname();
   if (!hostname) {
-    renderState(els.dnsBody, "no domain", "Open a website to look up its DNS records.");
+    renderState(els.dnsBody, tr("dns_no_domain"), tr("dns_no_domain_hint"));
     return;
   }
   const base = NetworkTools.baseDomain(hostname);
@@ -1094,14 +1119,14 @@ async function runDnsLookup(forceRefresh = false) {
     if (cached) {
       logEvent("dns", `cache hit for ${hostname}`, { cached: true });
       renderDns(hostname, base, cached.hostResults, cached.baseResults);
-      els.dnsBtn.textContent = "Refresh";
+      els.dnsBtn.textContent = tr("btn_refresh");
       return;
     }
   }
 
   els.dnsBtn.disabled = true;
-  els.dnsBtn.textContent = "looking up…";
-  renderState(els.dnsBody, "querying DNS…");
+  els.dnsBtn.textContent = tr("dns_looking_up");
+  renderState(els.dnsBody, tr("dns_querying"));
 
   const types = NetworkTools.RECORD_TYPES;
   let hostResults, baseResults;
@@ -1116,13 +1141,13 @@ async function runDnsLookup(forceRefresh = false) {
   renderDns(hostname, base, hostResults, baseResults);
   await cacheSet(key, { hostResults, baseResults, savedAt: Date.now() });
   els.dnsBtn.disabled = false;
-  els.dnsBtn.textContent = "Refresh";
+  els.dnsBtn.textContent = tr("btn_refresh");
 }
 
 async function runSubdomainLookup(forceRefresh = false) {
   const hostname = currentHostname();
   if (!hostname) {
-    renderState(els.subBody, "no domain", "Open a website to discover its subdomains.");
+    renderState(els.subBody, tr("dns_no_domain"), tr("sub_no_domain_hint"));
     return;
   }
   const base = NetworkTools.baseDomain(hostname);
@@ -1133,15 +1158,14 @@ async function runSubdomainLookup(forceRefresh = false) {
     if (cached) {
       logEvent("subdomains", `cache hit for ${base}`, { cached: true });
       renderSubdomains(base, cached.data);
-      els.subBtn.textContent = "Refresh";
+      els.subBtn.textContent = tr("btn_refresh");
       return;
     }
   }
 
   els.subBtn.disabled = true;
-  els.subBtn.textContent = "searching…";
-  renderState(els.subBody, `searching CT logs for ${base}…`,
-    "This can take a few seconds.");
+  els.subBtn.textContent = tr("sub_searching");
+  renderState(els.subBody, `${tr("sub_searching_pre")} ${base}…`, tr("takes_time"));
   const data = await subdomainLookup(base);
   renderSubdomains(base, data);
   // Only cache successful results (don't cache errors — let them retry).
@@ -1149,7 +1173,7 @@ async function runSubdomainLookup(forceRefresh = false) {
     await cacheSet(key, { data, savedAt: Date.now() });
   }
   els.subBtn.disabled = false;
-  els.subBtn.textContent = "Refresh";
+  els.subBtn.textContent = tr("btn_refresh");
 }
 
 els.dnsBtn.addEventListener("click", () => runDnsLookup(true));
@@ -1183,14 +1207,14 @@ function contactRows(label, c) {
   if (!c) return "";
   const country = c.address && c.address.country;
   const parts = [];
-  if (c.name) parts.push(["Name", c.name]);
-  if (c.organization) parts.push(["Org", c.organization]);
-  if (c.email) parts.push(["Email", c.email]);
-  if (c.phone) parts.push(["Phone", c.phone]);
-  if (country) parts.push(["Country", country]);
+  if (c.name) parts.push([tr("whois_k_name"), c.name]);
+  if (c.organization) parts.push([tr("whois_k_org"), c.organization]);
+  if (c.email) parts.push([tr("whois_k_email"), c.email]);
+  if (c.phone) parts.push([tr("whois_k_phone"), c.phone]);
+  if (country) parts.push([tr("whois_k_country"), country]);
 
   if (!parts.length) {
-    const why = c.redacted ? "redacted for privacy" : "not available";
+    const why = c.redacted ? tr("whois_redacted") : tr("whois_not_available");
     return `
       <div class="whois-group">
         <div class="whois-group-label">${escapeHtml(label)}</div>
@@ -1213,14 +1237,13 @@ function contactRows(label, c) {
 
 function renderWhois(data) {
   if (!data || data.error) {
-    renderState(els.whoisBody, "lookup failed",
-      (data && data.error) || "Could not reach the WHOIS service.");
+    renderState(els.whoisBody, tr("whois_fail"),
+      (data && data.error) || tr("whois_fail_hint"));
     return;
   }
 
   if (data.isRegistered === false) {
-    renderState(els.whoisBody, "not registered",
-      "This domain appears to be unregistered or has no WHOIS record.");
+    renderState(els.whoisBody, tr("whois_not_registered"), tr("whois_not_registered_hint"));
     return;
   }
 
@@ -1238,11 +1261,11 @@ function renderWhois(data) {
     (data.meta && data.meta.server) || null;
 
   const coreRows = [];
-  if (data.domain) coreRows.push(["Domain", data.domain]);
-  if (registrarName) coreRows.push(["Registrar", registrarName]);
-  if (created) coreRows.push(["Created", created]);
-  if (updated) coreRows.push(["Updated", updated]);
-  if (expires) coreRows.push(["Expires", expires]);
+  if (data.domain) coreRows.push([tr("whois_k_domain"), data.domain]);
+  if (registrarName) coreRows.push([tr("whois_k_registrar"), registrarName]);
+  if (created) coreRows.push([tr("whois_k_created"), created]);
+  if (updated) coreRows.push([tr("whois_k_updated"), updated]);
+  if (expires) coreRows.push([tr("whois_k_expires"), expires]);
 
   const coreHtml = coreRows.length
     ? coreRows
@@ -1253,11 +1276,11 @@ function renderWhois(data) {
             )}</span></div>`
         )
         .join("")
-    : `<div class="whois-redacted">no registration data available</div>`;
+    : `<div class="whois-redacted">${escapeHtml(tr("whois_no_data"))}</div>`;
 
   const status = data.status;
   const statusHtml = Array.isArray(status) && status.length
-    ? `<div class="whois-group"><div class="whois-group-label">Status</div>${status
+    ? `<div class="whois-group"><div class="whois-group-label">${escapeHtml(tr("whois_status"))}</div>${status
         .map((s) => `<div class="whois-status">${escapeHtml(String(s))}</div>`)
         .join("")}</div>`
     : "";
@@ -1265,29 +1288,29 @@ function renderWhois(data) {
   // Source / freshness info (helps interpret the data).
   const src = data.meta && data.meta.source ? data.meta.source.toUpperCase() : null;
   const srcHtml = src
-    ? `<div class="whois-note">Source: ${escapeHtml(src)}${
+    ? `<div class="whois-note">${escapeHtml(tr("whois_source"))}: ${escapeHtml(src)}${
         registrar.whoisServer ? ` · ${escapeHtml(registrar.whoisServer)}` : ""
       }</div>`
     : "";
 
   els.whoisBody.innerHTML = `
     <div class="whois-group">
-      <div class="whois-group-label">Registration</div>
+      <div class="whois-group-label">${escapeHtml(tr("whois_registration"))}</div>
       ${coreHtml}
     </div>
     ${statusHtml}
-    ${contactRows("Registrant (owner)", contacts.registrant)}
-    ${contactRows("Administrative contact", contacts.admin)}
-    ${contactRows("Technical contact", contacts.tech)}
-    ${contacts.billing ? contactRows("Billing contact", contacts.billing) : ""}
+    ${contactRows(tr("whois_registrant"), contacts.registrant)}
+    ${contactRows(tr("whois_admin"), contacts.admin)}
+    ${contactRows(tr("whois_tech"), contacts.tech)}
+    ${contacts.billing ? contactRows(tr("whois_billing"), contacts.billing) : ""}
     ${srcHtml}
-    <div class="whois-note">Some contact fields may be redacted by registrars under GDPR.</div>`;
+    <div class="whois-note">${escapeHtml(tr("whois_gdpr_note"))}</div>`;
 }
 
 async function runWhoisLookup(forceRefresh = false) {
   const hostname = currentHostname();
   if (!hostname) {
-    renderState(els.whoisBody, "no domain", "Open a website to look up its WHOIS record.");
+    renderState(els.whoisBody, tr("dns_no_domain"), tr("whois_no_domain_hint"));
     return;
   }
   const base = NetworkTools.baseDomain(hostname);
@@ -1298,21 +1321,21 @@ async function runWhoisLookup(forceRefresh = false) {
     if (cached) {
       logEvent("whois", `cache hit for ${base}`, { cached: true });
       renderWhois(cached.data);
-      els.whoisBtn.textContent = "Refresh";
+      els.whoisBtn.textContent = tr("btn_refresh");
       return;
     }
   }
 
   els.whoisBtn.disabled = true;
-  els.whoisBtn.textContent = "looking up…";
-  renderState(els.whoisBody, `querying WHOIS for ${base}…`, "This can take a few seconds.");
+  els.whoisBtn.textContent = tr("dns_looking_up");
+  renderState(els.whoisBody, `${tr("whois_querying_pre")} ${base}…`, tr("takes_time"));
   const data = await whoisRequest(base);
   renderWhois(data);
   if (data && !data.error) {
     await cacheSet(key, { data, savedAt: Date.now() });
   }
   els.whoisBtn.disabled = false;
-  els.whoisBtn.textContent = "Refresh";
+  els.whoisBtn.textContent = tr("btn_refresh");
 }
 
 els.whoisBtn.addEventListener("click", () => runWhoisLookup(true));

@@ -532,32 +532,33 @@ const TechDetector = (() => {
   // Known HTTP security headers. Keys are the REAL lowercased header names as
   // captured by background.js (e.g. "strict-transport-security", not "hsts").
   //   importance     -> how much it matters when absent (drives the "missing" sort)
-  //   description    -> plain-English explanation shown for a configured header
-  //   recommendation -> the header line to add when it's missing
+  //   descKey        -> i18n key for the explanation shown on a configured header
+  //   recommendation -> the literal header line to add when missing (not translated)
   //   check(value)   -> inspects a present value and returns:
-  //                       { status: "good" }                         (well configured)
-  //                       { status: "warning"|"bad", issue, fix }    (misconfigured)
+  //                       { status: "good" }                                       (well configured)
+  //                       { status: "warning"|"bad", issueKey, issueArgs?, fixKey } (misconfigured)
+  //
+  // All human text is referenced by i18n key; analyzeHeaders() resolves the
+  // keys through the translator passed in, so this module stays DOM- and
+  // chrome-free (and still works standalone, returning keys, with no translator).
   const SECURITY_HEADERS = {
     "strict-transport-security": {
       name: "HSTS",
       importance: "high",
-      description: "Forces browsers to connect over HTTPS, blocking protocol-downgrade and cookie-hijacking attacks.",
+      descKey: "hdr_hsts_desc",
       recommendation: "Strict-Transport-Security: max-age=31536000; includeSubDomains",
       check(value) {
         if (!/max-age=/i.test(value)) {
-          return {
-            status: "bad",
-            issue: "No max-age directive — browsers ignore the policy entirely.",
-            fix: "Add a max-age, e.g. max-age=31536000 (one year).",
-          };
+          return { status: "bad", issueKey: "hdr_hsts_nomaxage_issue", fixKey: "hdr_hsts_nomaxage_fix" };
         }
         const m = value.match(/max-age=(\d+)/i);
         const age = m ? parseInt(m[1], 10) : 0;
         if (age < 31536000) {
           return {
             status: "warning",
-            issue: `max-age is ${age}s, below the recommended one year (31536000s).`,
-            fix: "Raise max-age to at least 31536000 and add includeSubDomains.",
+            issueKey: "hdr_hsts_short_issue",
+            issueArgs: [String(age)],
+            fixKey: "hdr_hsts_short_fix",
           };
         }
         return { status: "good" };
@@ -566,43 +567,41 @@ const TechDetector = (() => {
     "x-frame-options": {
       name: "X-Frame-Options",
       importance: "high",
-      description: "Stops the page from being embedded in a frame, defending against clickjacking.",
+      descKey: "hdr_xfo_desc",
       recommendation: "X-Frame-Options: SAMEORIGIN",
       check(value) {
         const v = value.trim().toUpperCase();
         if (v === "DENY" || v === "SAMEORIGIN") return { status: "good" };
         if (v.startsWith("ALLOW-FROM")) {
-          return {
-            status: "warning",
-            issue: "ALLOW-FROM is deprecated and ignored by modern browsers.",
-            fix: "Use a Content-Security-Policy frame-ancestors directive instead, or set SAMEORIGIN.",
-          };
+          return { status: "warning", issueKey: "hdr_xfo_allowfrom_issue", fixKey: "hdr_xfo_allowfrom_fix" };
         }
         return {
           status: "warning",
-          issue: `"${value}" is not a valid value; only DENY and SAMEORIGIN are honored.`,
-          fix: "Set X-Frame-Options: SAMEORIGIN (or DENY).",
+          issueKey: "hdr_xfo_invalid_issue",
+          issueArgs: [value],
+          fixKey: "hdr_xfo_invalid_fix",
         };
       },
     },
     "x-content-type-options": {
       name: "X-Content-Type-Options",
       importance: "high",
-      description: "Stops browsers from MIME-sniffing a response away from its declared content type.",
+      descKey: "hdr_xcto_desc",
       recommendation: "X-Content-Type-Options: nosniff",
       check(value) {
         if (value.trim().toLowerCase() === "nosniff") return { status: "good" };
         return {
           status: "warning",
-          issue: `"${value}" is not recognized; "nosniff" is the only valid value.`,
-          fix: "Set X-Content-Type-Options: nosniff.",
+          issueKey: "hdr_xcto_invalid_issue",
+          issueArgs: [value],
+          fixKey: "hdr_xcto_invalid_fix",
         };
       },
     },
     "content-security-policy": {
       name: "CSP",
       importance: "high",
-      description: "Restricts which scripts, styles and other resources may load, the strongest defense against XSS.",
+      descKey: "hdr_csp_desc",
       recommendation: "Content-Security-Policy: default-src 'self'",
       check(value) {
         const weak = [];
@@ -611,8 +610,9 @@ const TechDetector = (() => {
         if (weak.length) {
           return {
             status: "warning",
-            issue: `Contains ${weak.join(" and ")}, which re-opens the door to XSS the policy is meant to close.`,
-            fix: "Remove unsafe-inline/unsafe-eval; use nonces or hashes for inline scripts.",
+            issueKey: "hdr_csp_weak_issue",
+            issueArgs: [weak.join(" & ")],
+            fixKey: "hdr_csp_weak_fix",
           };
         }
         return { status: "good" };
@@ -621,23 +621,15 @@ const TechDetector = (() => {
     "referrer-policy": {
       name: "Referrer-Policy",
       importance: "medium",
-      description: "Controls how much of the originating URL is sent in the Referer header to other sites.",
+      descKey: "hdr_referrer_desc",
       recommendation: "Referrer-Policy: strict-origin-when-cross-origin",
       check(value) {
         const v = value.trim().toLowerCase();
         if (v === "unsafe-url") {
-          return {
-            status: "bad",
-            issue: "unsafe-url leaks the full URL (path and query) to every destination.",
-            fix: "Use strict-origin-when-cross-origin.",
-          };
+          return { status: "bad", issueKey: "hdr_referrer_unsafe_issue", fixKey: "hdr_referrer_unsafe_fix" };
         }
         if (v === "no-referrer-when-downgrade") {
-          return {
-            status: "warning",
-            issue: "Sends the full URL to all same-or-stronger-security destinations — more than usually needed.",
-            fix: "Tighten to strict-origin-when-cross-origin.",
-          };
+          return { status: "warning", issueKey: "hdr_referrer_downgrade_issue", fixKey: "hdr_referrer_downgrade_fix" };
         }
         return { status: "good" };
       },
@@ -645,7 +637,7 @@ const TechDetector = (() => {
     "permissions-policy": {
       name: "Permissions-Policy",
       importance: "medium",
-      description: "Declares which browser features (camera, microphone, geolocation, etc.) the page may use.",
+      descKey: "hdr_permissions_desc",
       recommendation: "Permissions-Policy: geolocation=(), camera=(), microphone=()",
       check() {
         // Presence is the win here; any explicit policy is a reasonable posture.
@@ -655,11 +647,14 @@ const TechDetector = (() => {
   };
 
   // Analyze captured response headers against the known security headers.
+  // `tr(key, args)` is the translator (from the popup); if omitted, keys are
+  // returned verbatim so the module still works standalone/in tests.
   // Returns { configured, missing, misconfigured }. A present header lands in
   // exactly one of configured/misconfigured (never both); absent ones go to
   // missing. Returns null when no headers were captured at all.
-  function analyzeHeaders(headers) {
+  function analyzeHeaders(headers, tr) {
     if (!headers || typeof headers !== "object") return null;
+    const t = typeof tr === "function" ? tr : (k) => k;
 
     const configured = [];
     const missing = [];
@@ -671,8 +666,8 @@ const TechDetector = (() => {
         missing.push({
           name: spec.name,
           importance: spec.importance,
-          why: spec.description,
-          recommendation: `Add header: ${spec.recommendation}`,
+          why: t(spec.descKey),
+          recommendation: `${t("hdr_add_prefix")} ${spec.recommendation}`,
         });
         return;
       }
@@ -690,15 +685,15 @@ const TechDetector = (() => {
           name: spec.name,
           value,
           status: "good",
-          explanation: spec.description,
+          explanation: t(spec.descKey),
         });
       } else {
         misconfigured.push({
           name: spec.name,
           value,
           status: result.status, // "warning" | "bad"
-          issue: result.issue || "Header is present but not optimally configured.",
-          fix: result.fix || `Recommended: ${spec.recommendation}`,
+          issue: t(result.issueKey, result.issueArgs),
+          fix: t(result.fixKey),
         });
       }
     });
