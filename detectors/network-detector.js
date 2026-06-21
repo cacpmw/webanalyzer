@@ -59,7 +59,15 @@ const NetworkTools = (() => {
   function baseDomain(hostname) {
     const parts = hostname.split(".").filter(Boolean);
     if (parts.length <= 2) return hostname;
-    const multiPartTlds = ["com.br", "com.au", "co.uk", "co.jp", "com.mx", "co.nz", "com.ar"];
+    const multiPartTlds = [
+      // Brazil (registro.br) — registrations live at the 3rd level under one of
+      // many second-level categories, so all of these are effective TLDs.
+      "com.br", "net.br", "org.br", "gov.br", "edu.br", "mil.br", "art.br",
+      "blog.br", "dev.br", "app.br", "eco.br", "ind.br", "inf.br", "rec.br",
+      "srv.br", "tur.br", "tv.br", "wiki.br",
+      // Other common multi-part TLDs.
+      "com.au", "co.uk", "co.jp", "com.mx", "co.nz", "com.ar",
+    ];
     const lastTwo = parts.slice(-2).join(".");
     const lastThree = parts.slice(-3).join(".");
     if (multiPartTlds.some((t) => lastThree.endsWith(t))) return lastThree;

@@ -85,6 +85,14 @@ describe("NetworkTools.baseDomain", () => {
   it("does NOT over-grab on a simple TLD: a.b.example.com → example.com", () => {
     expect(NetworkTools.baseDomain("a.b.example.com")).toBe("example.com");
   });
+
+  it("handles Brazilian second-level domains beyond com.br (dev.br, net.br, org.br, app.br)", () => {
+    expect(NetworkTools.baseDomain("www.carloscarneiro.dev.br")).toBe("carloscarneiro.dev.br");
+    expect(NetworkTools.baseDomain("carloscarneiro.dev.br")).toBe("carloscarneiro.dev.br");
+    expect(NetworkTools.baseDomain("foo.bar.net.br")).toBe("bar.net.br");
+    expect(NetworkTools.baseDomain("sub.empresa.org.br")).toBe("empresa.org.br");
+    expect(NetworkTools.baseDomain("api.projeto.app.br")).toBe("projeto.app.br");
+  });
 });
 
 describe("NetworkTools.normalizeSubdomains", () => {
