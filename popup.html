@@ -18,6 +18,7 @@
     <button class="tab-btn" data-tab="network" role="tab" aria-selected="false" data-i18n="tab_network">Network</button>
     <button class="tab-btn" data-tab="whois" role="tab" aria-selected="false" data-i18n="tab_whois">Whois</button>
     <button class="tab-btn" data-tab="headers" role="tab" aria-selected="false" data-i18n="tab_headers">Headers</button>
+    <button class="tab-btn" data-tab="ai" role="tab" aria-selected="false" data-i18n="tab_ai">AI</button>
   </nav>
 
   <main class="app-body" id="body">
@@ -123,6 +124,53 @@
             <div class="spinner"></div>
             <div class="state-mono" data-i18n="st_reading_headers">reading headers…</div>
           </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== AI VIEW ===================== -->
+    <div class="tab-view" id="view-ai">
+      <section class="panel" id="aiPanel">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="ai_panel_title">AI Reports</span>
+        </div>
+        <div class="panel-body" id="aiBody">
+
+          <!-- Report type buttons — shown when integration is configured -->
+          <div class="ai-actions" id="aiActions" hidden>
+            <button class="ai-report-btn" data-report="stack_intelligence" data-i18n="ai_btn_stack">Stack Intelligence</button>
+            <button class="ai-report-btn" data-report="security_posture" data-i18n="ai_btn_security">Security Posture</button>
+            <button class="ai-report-btn" data-report="competitive_brief" data-i18n="ai_btn_competitive">Competitive Brief</button>
+            <button class="ai-report-btn" data-report="full" data-i18n="ai_btn_full">Full Report</button>
+          </div>
+
+          <!-- Loading state -->
+          <div class="ai-loading" id="aiLoading" hidden>
+            <div class="spinner"></div>
+            <div class="state-mono" data-i18n="ai_generating">generating report…</div>
+          </div>
+
+          <!-- Result area -->
+          <div class="ai-result" id="aiResult" hidden>
+            <div class="ai-result-body" id="aiResultBody"></div>
+            <div class="ai-result-actions">
+              <button class="btn" id="aiDownloadBtn" data-i18n="ai_download">Download</button>
+              <button class="btn" id="aiNewReportBtn" data-i18n="ai_new_report">New Report</button>
+            </div>
+          </div>
+
+          <!-- Error state -->
+          <div class="ai-error" id="aiError" hidden>
+            <span class="state-mono" id="aiErrorMsg"></span>
+            <button class="btn" id="aiRetryBtn" data-i18n="ai_retry">Try again</button>
+          </div>
+
+          <!-- Not configured state — shown when no webhook or API key is set -->
+          <div class="ai-unconfigured" id="aiUnconfigured" hidden>
+            <p class="state-mono" data-i18n="ai_not_configured">No AI integration configured.</p>
+            <a class="btn" id="aiSettingsLink" data-i18n="ai_go_settings">Open Settings</a>
+          </div>
+
         </div>
       </section>
     </div>

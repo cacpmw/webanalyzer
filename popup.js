@@ -29,6 +29,18 @@ const els = {
   whoisBody: document.getElementById("whoisBody"),
   // Headers tab
   headersBody: document.getElementById("headersBody"),
+  // AI tab
+  aiActions: document.getElementById("aiActions"),
+  aiLoading: document.getElementById("aiLoading"),
+  aiResult: document.getElementById("aiResult"),
+  aiResultBody: document.getElementById("aiResultBody"),
+  aiDownloadBtn: document.getElementById("aiDownloadBtn"),
+  aiNewReportBtn: document.getElementById("aiNewReportBtn"),
+  aiError: document.getElementById("aiError"),
+  aiErrorMsg: document.getElementById("aiErrorMsg"),
+  aiRetryBtn: document.getElementById("aiRetryBtn"),
+  aiUnconfigured: document.getElementById("aiUnconfigured"),
+  aiSettingsLink: document.getElementById("aiSettingsLink"),
 };
 
 let currentTab = null;
@@ -36,6 +48,9 @@ let currentSignals = null;
 let currentTechs = [];
 let currentHeaders = null; // { configured, missing, misconfigured } from analyzeHeaders
 let currentDnsExport = null; // { zone, byType } for the BIND export
+let aiCurrentReport = null; // text of the last generated report
+let aiCurrentType = null; // report type key of the last request
+let aiLoaded = false; // whether the AI tab config check has run
 
 // --- i18n ----------------------------------------------------------------
 // Thin wrapper over chrome.i18n. Chrome selects the locale from the browser
@@ -937,6 +952,15 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
       whoisLoaded = true;
       runWhoisLookup();
     }
+
+    // First time the AI tab is opened: check if integration is configured.
+    if (target === "ai" && !aiLoaded) {
+      aiLoaded = true;
+      chrome.storage.local.get(["webhookUrl", "llmApiKey"], (cfg) => {
+        const hasConfig = !!(cfg.webhookUrl || cfg.llmApiKey);
+        showAiState(hasConfig ? "actions" : "unconfigured");
+      });
+    }
   });
 });
 
@@ -1517,3 +1541,125 @@ function wireTooltips(body) {
 
 wireTooltips(els.techBody);
 wireTooltips(els.headersBody);
+
+// --- AI tab --------------------------------------------------------------
+
+// Pure: maps a target state name to a {state -> hidden?} object. DOM-free so
+// the show/hide decision can be unit-tested without elements.
+function aiStateMap(which) {
+  const states = ["actions", "loading", "result", "error", "unconfigured"];
+  const map = {};
+  states.forEach((s) => {
+    map[s] = s !== which;
+  });
+  return map;
+}
+
+// Pure: resolves an error code through a passed-in translations map, so it's
+// testable without the chrome.i18n API.
+function aiErrorMessage(errorCode, translations) {
+  return translations[errorCode] || translations["unknown"] || errorCode;
+}
+
+function showAiState(which) {
+  const map = aiStateMap(which);
+  els.aiActions.hidden = map.actions;
+  els.aiLoading.hidden = map.loading;
+  els.aiResult.hidden = map.result;
+  els.aiError.hidden = map.error;
+  els.aiUnconfigured.hidden = map.unconfigured;
+}
+
+function renderAiResult(data) {
+  const text = (typeof data.report === "string")
+    ? data.report
+    : JSON.stringify(data, null, 2);
+  aiCurrentReport = text;
+  els.aiResultBody.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+  showAiState("result");
+}
+
+function renderAiError(errorCode) {
+  els.aiErrorMsg.textContent = aiErrorMessage(errorCode, {
+    missing_webhook_url: tr("ai_err_no_webhook"),
+    http_error: tr("ai_err_http"),
+    network_error: tr("ai_err_network"),
+    unknown: tr("ai_err_unknown"),
+  });
+  showAiState("error");
+}
+
+els.aiActions.addEventListener("click", (e) => {
+  const btn = e.target.closest(".ai-report-btn");
+  if (!btn) return;
+  aiCurrentType = btn.dataset.report;
+  showAiState("loading");
+
+  chrome.storage.local.get(["webhookUrl", "authToken", "llmProvider", "llmApiKey"], (cfg) => {
+    const payload = {
+      meta: {
+        url: currentTab.url,
+        domain: currentHostname(),
+        analyzedAt: new Date().toISOString(),
+        language: navigator.language,
+      },
+      reportType: aiCurrentType,
+      technologies: currentTechs || [],
+      securityHeaders: (currentSignals && currentSignals.securityHeaders) || {},
+      dns: (currentSignals && currentSignals.dns) || {},
+      whois: (currentSignals && currentSignals.whois) || {},
+      ip: (currentSignals && currentSignals.ip) || null,
+    };
+
+    chrome.runtime.sendMessage(
+      {
+        action: "aiReport",
+        payload,
+        webhookUrl: cfg.webhookUrl || "",
+        authToken: cfg.authToken || "",
+        tabId: currentTab.id,
+      },
+      (result) => {
+        if (chrome.runtime.lastError || !result) {
+          renderAiError("network_error");
+          return;
+        }
+        if (result.ok) {
+          renderAiResult(result.data);
+        } else {
+          renderAiError(result.error);
+        }
+      }
+    );
+  });
+});
+
+els.aiDownloadBtn.addEventListener("click", () => {
+  if (!aiCurrentReport) return;
+  const host = (currentHostname() || "tab").replace(/[^a-z0-9.-]/gi, "_");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const filename = `webanalyzer_ai_${aiCurrentType || "report"}_${host}_${stamp}.txt`;
+  downloadBlob(new Blob([aiCurrentReport], { type: "text/plain" }), filename);
+});
+
+els.aiNewReportBtn.addEventListener("click", () => {
+  aiCurrentReport = null;
+  aiCurrentType = null;
+  showAiState("actions");
+});
+
+els.aiRetryBtn.addEventListener("click", () => {
+  aiCurrentReport = null;
+  aiCurrentType = null;
+  showAiState("actions");
+});
+
+els.aiSettingsLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.runtime.openOptionsPage();
+});
+
+// Exposed for unit tests; harmless in the browser (module is undefined).
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { aiStateMap, aiErrorMessage };
+}
