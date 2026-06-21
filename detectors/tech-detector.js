@@ -174,7 +174,13 @@ const TechDetector = (() => {
     },
     "Tailwind CSS": {
       category: "CSS Framework",
-      html: [/class="[^"]*\b(flex|grid|px-\d|py-\d|text-(xs|sm|lg|xl)|bg-(gray|blue|red|slate|zinc)-\d{3})\b/i],
+      // Match only Tailwind-distinctive class tokens, and require each token to
+      // START a class (negative lookbehind for word-char/hyphen) so themed
+      // prefixes like "wpex-flex" or "wpex-py-30" don't false-positive. Bare
+      // flex/grid and shared spacing scales (px-4, mt-5 — also Bootstrap) are
+      // intentionally excluded; we key off variant prefixes (md:, hover:),
+      // numbered color scales (bg-blue-500), text sizes and grid-cols-N.
+      html: [/class="[^"]*(?<![-\w])(?:(?:sm|md|lg|xl|2xl|hover|focus|active|disabled|dark|group-hover):[a-z][\w-]+|(?:bg|text|border|ring|fill|stroke|from|via|to|divide|shadow|accent|decoration|outline)-(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}|text-(?:xs|sm|base|lg|xl|[2-9]xl)(?![\w-])|grid-cols-\d{1,2})/i],
     },
     Elementor: {
       category: "Page Builder",
