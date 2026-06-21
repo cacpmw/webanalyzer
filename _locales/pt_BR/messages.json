@@ -76,6 +76,7 @@
   "dns_fail": { "message": "consulta falhou" },
   "dns_fail_hint": { "message": "Não foi possível acessar o resolvedor DNS. Tente novamente." },
   "dns_no_records": { "message": "sem registros" },
+  "dns_no_records_hint": { "message": "Este domínio não retornou registros DNS de nenhum tipo." },
   "dns_origin_host": { "message": "host" },
   "dns_origin_domain": { "message": "domínio" },
   "dns_no_domain": { "message": "sem domínio" },

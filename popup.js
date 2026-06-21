@@ -1,7 +1,8 @@
 // popup.js
 // Orchestrates the analysis: gather DOM signals (content script) + response
 // data (background), run detection, render. Resolves IP via DNS fallback when
-// the page came from cache. Deep scan is opt-in via its own button.
+// the page came from cache. The WordPress deep scan runs automatically when
+// WordPress is detected; its button remains for a manual re-run.
 
 const els = {
   host: document.getElementById("host"),
@@ -139,12 +140,15 @@ function renderServer(summary, behindCdn) {
     ? `${escapeHtml(summary.ip)}<span id="stack-ip-flag" class="ip-flag-slot"></span>${proxyNote}`
     : `<span class="kv-val empty">${escapeHtml(tr("server_resolving"))}</span>`;
 
+  // Hide any row whose value the server didn't expose, rather than showing a
+  // permanent "not exposed". IP is always shown (it carries its own resolving
+  // state while DNS fallback runs).
   const rows = [
-    ["IP", summary.ip ? ipVal : null, true],
-    ["Server", summary.server, false],
-    ["Powered-By", summary.poweredBy, false],
-    ["Via", summary.via, false],
-    ["Status", summary.statusCode, false],
+    ["IP", ipVal, true],
+    ...(summary.server ? [["Server", summary.server, false]] : []),
+    ...(summary.poweredBy ? [["Powered-By", summary.poweredBy, false]] : []),
+    ...(summary.via ? [["Via", summary.via, false]] : []),
+    ...(summary.statusCode ? [["Status", summary.statusCode, false]] : []),
   ];
 
   els.serverBody.innerHTML = rows
@@ -206,14 +210,12 @@ function renderWordPress(signals, techs, deep) {
 
   const wp = signals.wordpress || { themes: [], plugins: [] };
   const wpTech = techs.find((t) => t.name === "WordPress");
-  const version = (deep && deep.readme) || (wpTech && wpTech.version) || null;
+  const version = (deep && deep.version) || (wpTech && wpTech.version) || null;
 
   const chips = (arr, cls) =>
-    arr.length
-      ? `<div class="wp-chips">${arr
-          .map((n) => `<span class="wp-chip ${cls}">${escapeHtml(n)}</span>`)
-          .join("")}</div>`
-      : `<span class="wp-empty">${escapeHtml(tr("wp_none_visible"))}</span>`;
+    `<div class="wp-chips">${arr
+      .map((n) => `<span class="wp-chip ${cls}">${escapeHtml(n)}</span>`)
+      .join("")}</div>`;
 
   // Merge plugins found in HTML with any found via deep scan REST namespaces.
   let plugins = [...wp.plugins];
@@ -230,14 +232,16 @@ function renderWordPress(signals, techs, deep) {
       <div class="wp-group-label">${escapeHtml(tr("wp_version"))}</div>
       <div class="wp-chips"><span class="wp-chip">${escapeHtml(version)}</span></div>
     </div>` : ""}
+    ${wp.themes.length ? `
     <div class="wp-group">
       <div class="wp-group-label">${escapeHtml(wp.themes.length > 1 ? tr("wp_themes") : tr("wp_theme"))}</div>
       ${chips(wp.themes, "theme")}
-    </div>
+    </div>` : ""}
+    ${plugins.length ? `
     <div class="wp-group">
       <div class="wp-group-label">${escapeHtml(tr("wp_plugins"))}</div>
       ${chips(plugins, "plugin")}
-    </div>
+    </div>` : ""}
     ${deep && deep.restApi ? `
     <div class="wp-group">
       <div class="wp-group-label">${escapeHtml(tr("wp_restapi"))}</div>
@@ -550,6 +554,11 @@ async function run() {
   renderTech(techs);
   renderWordPress(safeSignals, techs, null);
 
+  // Run the deep scan automatically when WordPress is detected — it backfills
+  // the version and REST-API plugins without the user having to click the
+  // button. (The button stays as a manual re-run.)
+  if (techs.some((t) => t.name === "WordPress")) performDeepScan();
+
   // Security headers analysis — uses the headers already captured above, so
   // no extra request or cache key is needed. Renders eagerly even though the
   // Headers tab may not be open yet (same as Stack).
@@ -854,7 +863,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-els.deepBtn.addEventListener("click", async () => {
+async function performDeepScan() {
   if (!currentTab) return;
   els.deepBtn.disabled = true;
   els.deepBtn.textContent = tr("deep_scanning");
@@ -867,7 +876,9 @@ els.deepBtn.addEventListener("click", async () => {
     deep
   );
   els.deepBtn.textContent = tr("deep_done");
-});
+}
+
+els.deepBtn.addEventListener("click", performDeepScan);
 
 document.addEventListener("DOMContentLoaded", () => {
   localizeHtml();
@@ -990,7 +1001,7 @@ function renderDns(hostname, base, hostResults, baseResults) {
   hostResults = hostResults || {};
   baseResults = baseResults || {};
 
-  els.dnsBody.innerHTML = types
+  const groups = types
     .map(({ type }) => {
       const label = tr("dns_label_" + type);
       const hostEntries = NetworkTools.parseAnswers(hostResults[type] || [], type);
@@ -1012,9 +1023,11 @@ function renderDns(hostname, base, hostResults, baseResults) {
       });
 
       const merged = Array.from(byValue.values());
+      // Hide record types the domain doesn't have, rather than listing them
+      // as "no records".
+      if (!merged.length) return "";
       const isIpType = type === "A" || type === "AAAA";
-      const values = merged.length
-        ? merged
+      const values = merged
             .map((e) => {
               // Only show an origin tag when the value is exclusive to one level
               // (and the two levels actually differ).
@@ -1031,8 +1044,7 @@ function renderDns(hostname, base, hostResults, baseResults) {
                 e.ttl ? `<span class="dns-ttl">TTL ${e.ttl}</span>` : ""
               }${tag}</div>`;
             })
-            .join("")
-        : `<div class="dns-value none">${escapeHtml(tr("dns_no_records"))}</div>`;
+            .join("");
 
       return `
         <div class="dns-group">
@@ -1044,6 +1056,14 @@ function renderDns(hostname, base, hostResults, baseResults) {
         </div>`;
     })
     .join("");
+
+  // If the domain resolved nothing across every record type, show a single
+  // tab-level state instead of a blank panel.
+  if (!groups) {
+    renderState(els.dnsBody, tr("dns_no_records"), tr("dns_no_records_hint"));
+    return;
+  }
+  els.dnsBody.innerHTML = groups;
 
   // Fill country flags for all IP records asynchronously (cached per IP).
   els.dnsBody.querySelectorAll(".ip-flag-slot[data-ip]").forEach((slot) => {
@@ -1223,14 +1243,9 @@ function contactRows(label, c) {
   if (c.phone) parts.push([tr("whois_k_phone"), c.phone]);
   if (country) parts.push([tr("whois_k_country"), country]);
 
-  if (!parts.length) {
-    const why = c.redacted ? tr("whois_redacted") : tr("whois_not_available");
-    return `
-      <div class="whois-group">
-        <div class="whois-group-label">${escapeHtml(label)}</div>
-        <div class="whois-redacted">${why}</div>
-      </div>`;
-  }
+  // No usable fields (redacted or simply absent): hide the whole block rather
+  // than showing a "redacted for privacy" placeholder.
+  if (!parts.length) return "";
   return `
     <div class="whois-group">
       <div class="whois-group-label">${escapeHtml(label)}</div>

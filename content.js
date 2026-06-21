@@ -96,7 +96,7 @@ function collectPageSignals() {
 // Only runs when the popup explicitly requests it. Capped and fail-soft.
 async function deepScan() {
   const origin = location.origin;
-  const result = { restApi: false, restPlugins: [], probedThemes: [], readme: null };
+  const result = { restApi: false, restPlugins: [], probedThemes: [], version: null };
 
   // 1. WP REST API — confirms WordPress and may list active plugins.
   try {
@@ -113,17 +113,44 @@ async function deepScan() {
     }
   } catch (e) {}
 
-  // 2. readme.html — often reveals the WordPress version.
+  // 2. Core version.
+  result.version = await detectWpVersion(origin);
+
+  return result;
+}
+
+// Detect the WordPress core version from public endpoints, most reliable first.
+// Versions are always dotted (e.g. 6.4.2); the regexes REQUIRE a dot so stray
+// integers can't slip through — modern readme.html no longer prints the version
+// in its heading and the only "Version 2" left is the GPL license text, which
+// must never be reported as the WordPress version.
+async function detectWpVersion(origin) {
+  // a) RSS feed <generator> — WordPress stamps ?v=X.Y.Z here by default and
+  //    most sites never strip it. This is the dependable source.
+  for (const path of ["/feed/", "/?feed=rss2"]) {
+    try {
+      const r = await fetch(`${origin}${path}`, { method: "GET" });
+      if (!r.ok) continue;
+      const text = await r.text();
+      const m = /<generator>[^<]*\?v=(\d+\.\d[\d.]*)/i.exec(text);
+      if (m) return m[1];
+    } catch (e) {}
+  }
+
+  // b) readme.html, but ONLY a version sitting inside its #logo heading (where
+  //    older WordPress printed it). Scoping to that block avoids matching the
+  //    GPL "version 2" text elsewhere in the file.
   try {
     const r = await fetch(`${origin}/readme.html`, { method: "GET" });
     if (r.ok) {
       const text = await r.text();
-      const vm = /Version\s+([\d.]+)/i.exec(text);
-      if (vm) result.readme = vm[1];
+      const logo = /id=["']logo["'][\s\S]{0,300}?<\/h1>/i.exec(text);
+      const m = logo && /version\s+(\d+\.\d[\d.]*)/i.exec(logo[0]);
+      if (m) return m[1];
     }
   } catch (e) {}
 
-  return result;
+  return null;
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

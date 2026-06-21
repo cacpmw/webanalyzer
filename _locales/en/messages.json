@@ -76,6 +76,7 @@
   "dns_fail": { "message": "lookup failed" },
   "dns_fail_hint": { "message": "Could not reach the DNS resolver. Try again." },
   "dns_no_records": { "message": "no records" },
+  "dns_no_records_hint": { "message": "This domain returned no DNS records of any type." },
   "dns_origin_host": { "message": "host" },
   "dns_origin_domain": { "message": "domain" },
   "dns_no_domain": { "message": "no domain" },
