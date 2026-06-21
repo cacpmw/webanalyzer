@@ -325,6 +325,50 @@ async function geoLookup(ip, tabId) {
   return null;
 }
 
+// Sends the analysis payload to the user's n8n webhook and returns its report.
+// Kept self-contained (only Logger.append + fetch) so it can be unit-tested in
+// isolation from the chrome.* surface around it.
+async function sendToN8n(payload, webhookUrl, authToken, tabId) {
+  if (!webhookUrl || typeof webhookUrl !== "string") {
+    return { ok: false, error: "missing_webhook_url" };
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (authToken && typeof authToken === "string") {
+    headers["X-Auth-Token"] = authToken;
+  }
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      credentials: "omit",
+      cache: "no-store",
+    });
+
+    if (!resp.ok) {
+      await Logger.append(tabId, "ai", `n8n → ${resp.status}`, null);
+      return { ok: false, error: "http_error", status: resp.status };
+    }
+
+    // The workflow may return JSON or a bare formatted string; fall back to the
+    // raw body so a non-JSON report still reaches the caller.
+    let data;
+    try {
+      data = await resp.json();
+    } catch (e) {
+      data = { report: await resp.text() };
+    }
+
+    await Logger.append(tabId, "ai", `n8n → 200`, null);
+    return { ok: true, data };
+  } catch (e) {
+    await Logger.append(tabId, "ai", "n8n → network error", e.message);
+    return { ok: false, error: "network_error", message: e.message };
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getHeaders") {
     getTab(request.tabId).then(async (data) => {
@@ -392,5 +436,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(() => sendResponse({ ok: true }));
     return true;
   }
+  if (request.action === "aiReport") {
+    sendToN8n(request.payload, request.webhookUrl, request.authToken, request.tabId)
+      .then((result) => sendResponse(result));
+    return true;
+  }
   return false;
 });
+
+// Exposed for unit tests; harmless in the service worker (module is undefined).
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { sendToN8n };
+}
