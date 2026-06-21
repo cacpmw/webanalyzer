@@ -1,0 +1,13 @@
+{
+  "name": "webanalyzer",
+  "version": "0.13.0",
+  "description": "WebAnalyzer browser extension",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

@@ -753,3 +753,4 @@ const TechDetector = (() => {
 })();
 
 if (typeof window !== "undefined") window.TechDetector = TechDetector;
+if (typeof module !== "undefined" && module.exports) module.exports = TechDetector;
