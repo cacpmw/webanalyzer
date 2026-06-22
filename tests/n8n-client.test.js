@@ -22,11 +22,11 @@ const { sendToN8n } = require("../background.js");
 
 const WEBHOOK = "https://n8n.example.com/webhook/abc123";
 
-// Minimal fake Response with controllable ok/status/json/text.
-const mockResponse = ({ ok = true, status = 200, json, text } = {}) => ({
+// Minimal fake Response. sendToN8n reads the body once via text(), then tries
+// JSON.parse, so the mock only needs a text() producing the raw body.
+const mockResponse = ({ ok = true, status = 200, text } = {}) => ({
   ok,
   status,
-  json: json || (async () => ({})),
   text: text || (async () => ""),
 });
 
@@ -48,7 +48,7 @@ describe("sendToN8n", () => {
   });
 
   it("sends a POST request to the correct webhookUrl", async () => {
-    global.fetch.mockResolvedValue(mockResponse({ json: async () => ({ report: "ok" }) }));
+    global.fetch.mockResolvedValue(mockResponse({ text: async () => '{"report":"ok"}' }));
     await sendToN8n({ a: 1 }, WEBHOOK, "tok", 1);
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const [url, opts] = global.fetch.mock.calls[0];
@@ -58,7 +58,7 @@ describe("sendToN8n", () => {
   });
 
   it("includes X-Auth-Token header when authToken is provided", async () => {
-    global.fetch.mockResolvedValue(mockResponse({ json: async () => ({}) }));
+    global.fetch.mockResolvedValue(mockResponse({ text: async () => "{}" }));
     await sendToN8n({ a: 1 }, WEBHOOK, "secret-token", 1);
     const [, opts] = global.fetch.mock.calls[0];
     expect(opts.headers["X-Auth-Token"]).toBe("secret-token");
@@ -66,7 +66,7 @@ describe("sendToN8n", () => {
   });
 
   it("omits X-Auth-Token header when authToken is empty", async () => {
-    global.fetch.mockResolvedValue(mockResponse({ json: async () => ({}) }));
+    global.fetch.mockResolvedValue(mockResponse({ text: async () => "{}" }));
     await sendToN8n({ a: 1 }, WEBHOOK, "", 1);
     const [, opts] = global.fetch.mock.calls[0];
     expect("X-Auth-Token" in opts.headers).toBe(false);
@@ -74,20 +74,13 @@ describe("sendToN8n", () => {
 
   it("returns ok: true and parsed data on a successful JSON response", async () => {
     const payload = { report: "# Report", score: 9 };
-    global.fetch.mockResolvedValue(mockResponse({ json: async () => payload }));
+    global.fetch.mockResolvedValue(mockResponse({ text: async () => JSON.stringify(payload) }));
     const r = await sendToN8n({ a: 1 }, WEBHOOK, "tok", 1);
     expect(r).toEqual({ ok: true, data: payload });
   });
 
   it("returns ok: true and raw text as report when response is not valid JSON", async () => {
-    global.fetch.mockResolvedValue(
-      mockResponse({
-        json: async () => {
-          throw new Error("Unexpected token");
-        },
-        text: async () => "plain text report",
-      })
-    );
+    global.fetch.mockResolvedValue(mockResponse({ text: async () => "plain text report" }));
     const r = await sendToN8n({ a: 1 }, WEBHOOK, "tok", 1);
     expect(r).toEqual({ ok: true, data: { report: "plain text report" } });
   });

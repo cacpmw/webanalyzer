@@ -330,6 +330,9 @@ async function geoLookup(ip, tabId) {
 // isolation from the chrome.* surface around it.
 async function sendToN8n(payload, webhookUrl, authToken, tabId) {
   if (!webhookUrl || typeof webhookUrl !== "string") {
+    // Log it: an empty URL means no request goes out, which otherwise looks
+    // like a silent no-op in the UI (e.g. when the active mode isn't n8n).
+    await Logger.append(tabId, "ai", "n8n → no webhook url (request not sent)", null);
     return { ok: false, error: "missing_webhook_url" };
   }
 
@@ -352,13 +355,16 @@ async function sendToN8n(payload, webhookUrl, authToken, tabId) {
       return { ok: false, error: "http_error", status: resp.status };
     }
 
-    // The workflow may return JSON or a bare formatted string; fall back to the
-    // raw body so a non-JSON report still reaches the caller.
+    // Read the body once, then try to parse it as JSON. A Response body can't be
+    // read twice, so calling .json() then .text() blows up for plain-text
+    // replies (n8n's "Respond With: Text"). Fall back to the raw text as the
+    // report when it isn't JSON.
+    const raw = await resp.text();
     let data;
     try {
-      data = await resp.json();
+      data = JSON.parse(raw);
     } catch (e) {
-      data = { report: await resp.text() };
+      data = { report: raw };
     }
 
     await Logger.append(tabId, "ai", `n8n → 200`, null);
