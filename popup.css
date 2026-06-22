@@ -1043,11 +1043,52 @@ body {
    AI TAB
    ============================================ */
 
+/* The flex rules below would otherwise beat the UA [hidden] rule (equal
+   specificity, author wins), leaving every state visible at once. Re-assert
+   none for the hidden containers so showAiState's toggling actually works. */
+.ai-actions[hidden],
+.ai-mode-select[hidden],
+.ai-loading[hidden],
+.ai-result[hidden],
+.ai-error[hidden],
+.ai-unconfigured[hidden] {
+  display: none;
+}
+
 .ai-actions {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-3);
+}
+
+.ai-mode-select {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-3);
+}
+
+.ai-mode-select .state-mono {
+  text-align: center;
+  margin-bottom: var(--sp-1);
+}
+
+.ai-mode-select select {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.ai-mode-select select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .ai-report-btn {

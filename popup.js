@@ -30,6 +30,9 @@ const els = {
   // Headers tab
   headersBody: document.getElementById("headersBody"),
   // AI tab
+  aiModeSelect: document.getElementById("aiModeSelect"),
+  aiModeSelectInput: document.getElementById("aiModeSelectInput"),
+  aiModeConfirmBtn: document.getElementById("aiModeConfirmBtn"),
   aiActions: document.getElementById("aiActions"),
   aiLoading: document.getElementById("aiLoading"),
   aiResult: document.getElementById("aiResult"),
@@ -48,9 +51,12 @@ let currentSignals = null;
 let currentTechs = [];
 let currentHeaders = null; // { configured, missing, misconfigured } from analyzeHeaders
 let currentDnsExport = null; // { zone, byType } for the BIND export
+let currentIp = null; // resolved IP of the current host (for the AI payload)
+let currentWhois = null; // raw WHOIS data once the WHOIS tab has loaded
 let aiCurrentReport = null; // text of the last generated report
 let aiCurrentType = null; // report type key of the last request
 let aiLoaded = false; // whether the AI tab config check has run
+let aiActiveMode = null; // "n8n" or "llm" — resolved at config check or mode selection
 
 // --- i18n ----------------------------------------------------------------
 // Thin wrapper over chrome.i18n. Chrome selects the locale from the browser
@@ -538,6 +544,7 @@ async function run() {
   currentSignals = signals;
 
   const summary = TechDetector.serverSummary(headerData);
+  currentIp = summary.ip || null;
   const protectionServices = TechDetector.protection(headerData);
   const behindCdn = protectionServices.length > 0;
   renderServer(summary, behindCdn);
@@ -548,7 +555,10 @@ async function run() {
   const needsIpv4 = !summary.ip || summary.fromCache || String(summary.ip).includes(":");
   if (needsIpv4 && hostname !== "—") {
     resolveIp(hostname).then((ip) => {
-      if (ip) renderServer({ ...summary, ip, fromCache: true }, behindCdn);
+      if (ip) {
+        currentIp = ip;
+        renderServer({ ...summary, ip, fromCache: true }, behindCdn);
+      }
     });
   }
 
@@ -957,8 +967,23 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (target === "ai" && !aiLoaded) {
       aiLoaded = true;
       chrome.storage.local.get(["webhookUrl", "llmApiKey"], (cfg) => {
-        const hasConfig = !!(cfg.webhookUrl || cfg.llmApiKey);
-        showAiState(hasConfig ? "actions" : "unconfigured");
+        const hasWebhook = !!(cfg.webhookUrl && cfg.webhookUrl.trim());
+        const hasLlm = !!(cfg.llmApiKey && cfg.llmApiKey.trim());
+
+        if (!hasWebhook && !hasLlm) {
+          showAiState("unconfigured");
+          return;
+        }
+
+        if (hasWebhook && hasLlm) {
+          // Let the user decide which integration to use.
+          showAiState("mode-select");
+          return;
+        }
+
+        // Only one is configured — use it directly.
+        aiActiveMode = hasWebhook ? "n8n" : "llm";
+        showAiState("actions");
       });
     }
   });
@@ -1307,6 +1332,9 @@ function contactRows(label, c) {
 }
 
 function renderWhois(data) {
+  // Keep the raw registration data around so the AI report payload can include
+  // it once the WHOIS tab has been loaded.
+  currentWhois = data && !data.error ? data : null;
   if (!data || data.error) {
     renderState(els.whoisBody, tr("whois_fail"),
       (data && data.error) || tr("whois_fail_hint"));
@@ -1547,7 +1575,7 @@ wireTooltips(els.headersBody);
 // Pure: maps a target state name to a {state -> hidden?} object. DOM-free so
 // the show/hide decision can be unit-tested without elements.
 function aiStateMap(which) {
-  const states = ["actions", "loading", "result", "error", "unconfigured"];
+  const states = ["actions", "loading", "result", "error", "unconfigured", "mode-select"];
   const map = {};
   states.forEach((s) => {
     map[s] = s !== which;
@@ -1563,11 +1591,12 @@ function aiErrorMessage(errorCode, translations) {
 
 function showAiState(which) {
   const map = aiStateMap(which);
-  els.aiActions.hidden = map.actions;
-  els.aiLoading.hidden = map.loading;
-  els.aiResult.hidden = map.result;
-  els.aiError.hidden = map.error;
-  els.aiUnconfigured.hidden = map.unconfigured;
+  els.aiActions.hidden = map["actions"];
+  els.aiLoading.hidden = map["loading"];
+  els.aiResult.hidden = map["result"];
+  els.aiError.hidden = map["error"];
+  els.aiUnconfigured.hidden = map["unconfigured"];
+  els.aiModeSelect.hidden = map["mode-select"];
 }
 
 function renderAiResult(data) {
@@ -1589,11 +1618,18 @@ function renderAiError(errorCode) {
   showAiState("error");
 }
 
-els.aiActions.addEventListener("click", (e) => {
+els.aiActions.addEventListener("click", async (e) => {
   const btn = e.target.closest(".ai-report-btn");
   if (!btn) return;
   aiCurrentType = btn.dataset.report;
   showAiState("loading");
+
+  // DNS and WHOIS are loaded lazily per tab; fetch them now (cache first) so the
+  // report payload includes them even when those tabs were never opened.
+  await Promise.all([
+    currentDnsExport ? null : runDnsLookup(),
+    currentWhois ? null : runWhoisLookup(),
+  ]);
 
   chrome.storage.local.get(["webhookUrl", "authToken", "llmProvider", "llmApiKey"], (cfg) => {
     const payload = {
@@ -1605,18 +1641,23 @@ els.aiActions.addEventListener("click", (e) => {
       },
       reportType: aiCurrentType,
       technologies: currentTechs || [],
-      securityHeaders: (currentSignals && currentSignals.securityHeaders) || {},
-      dns: (currentSignals && currentSignals.dns) || {},
-      whois: (currentSignals && currentSignals.whois) || {},
-      ip: (currentSignals && currentSignals.ip) || null,
+      // Pull each section from where it actually lives. DNS and WHOIS are
+      // lazy-loaded per tab, so they're only present if the user opened those
+      // tabs before generating the report.
+      securityHeaders: currentHeaders || {},
+      dns: currentDnsExport || {},
+      whois: currentWhois || {},
+      ip: currentIp || null,
     };
 
     chrome.runtime.sendMessage(
       {
         action: "aiReport",
         payload,
-        webhookUrl: cfg.webhookUrl || "",
-        authToken: cfg.authToken || "",
+        webhookUrl: aiActiveMode === "n8n" ? (cfg.webhookUrl || "") : "",
+        authToken: aiActiveMode === "n8n" ? (cfg.authToken || "") : "",
+        llmProvider: aiActiveMode === "llm" ? (cfg.llmProvider || "") : "",
+        llmApiKey: aiActiveMode === "llm" ? (cfg.llmApiKey || "") : "",
         tabId: currentTab.id,
       },
       (result) => {
@@ -1632,6 +1673,11 @@ els.aiActions.addEventListener("click", (e) => {
       }
     );
   });
+});
+
+els.aiModeConfirmBtn.addEventListener("click", () => {
+  aiActiveMode = els.aiModeSelectInput.value;
+  showAiState("actions");
 });
 
 els.aiDownloadBtn.addEventListener("click", () => {

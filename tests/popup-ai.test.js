@@ -31,7 +31,7 @@ global.chrome = {
 
 const { aiStateMap, aiErrorMessage } = require("../popup.js");
 
-const STATES = ["actions", "loading", "result", "error", "unconfigured"];
+const STATES = ["actions", "loading", "result", "error", "unconfigured", "mode-select"];
 
 describe("aiStateMap", () => {
   STATES.forEach((target) => {

@@ -136,6 +136,16 @@
         </div>
         <div class="panel-body" id="aiBody">
 
+          <!-- Mode selector — shown only when both webhook and LLM API key are configured -->
+          <div class="ai-mode-select" id="aiModeSelect" hidden>
+            <p class="state-mono" data-i18n="ai_choose_mode">Choose integration:</p>
+            <select id="aiModeSelectInput">
+              <option value="n8n" data-i18n="ai_mode_n8n">n8n Webhook</option>
+              <option value="llm" data-i18n="ai_mode_llm">Direct LLM API</option>
+            </select>
+            <button class="btn" id="aiModeConfirmBtn" data-i18n="ai_mode_confirm">Continue</button>
+          </div>
+
           <!-- Report type buttons — shown when integration is configured -->
           <div class="ai-actions" id="aiActions" hidden>
             <button class="ai-report-btn" data-report="stack_intelligence" data-i18n="ai_btn_stack">Stack Intelligence</button>
