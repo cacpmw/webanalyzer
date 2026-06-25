@@ -382,6 +382,12 @@ body {
 
 .wp-chip.theme { border-color: var(--accent-dim); }
 
+/* Best-effort plugin version, shown inside the plugin chip. */
+.wp-chip-ver {
+  font-size: var(--fs-xs);
+  color: var(--accent);
+}
+
 .wp-empty {
   font-size: var(--fs-sm);
   color: var(--text-muted);

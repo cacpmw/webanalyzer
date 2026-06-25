@@ -249,6 +249,26 @@ function renderWordPress(signals, techs, deep) {
       .map((n) => `<span class="wp-chip ${cls}">${escapeHtml(n)}</span>`)
       .join("")}</div>`;
 
+  // Best-effort per-plugin version from its enqueued assets' ?ver= in the page
+  // source (wp-content/plugins/<slug>/...?ver=X). Display only — not every
+  // plugin sets ?ver= to its real version, so this never feeds the CVE scan.
+  const html = (signals && signals.html) || "";
+  const pluginVersion = (slug) => {
+    const safe = String(slug).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Require a dotted version (major.minor+) so cache-busting timestamps/hashes
+    // in ?ver= (e.g. ?ver=1771584108) aren't shown as a bogus version.
+    const m = new RegExp("wp-content/plugins/" + safe + "/[^\"']*?[?&]ver=(\\d+\\.\\d[\\d.]*)", "i").exec(html);
+    return m ? m[1] : null;
+  };
+  const pluginChips = (arr) =>
+    `<div class="wp-chips">${arr
+      .map((n) => {
+        const v = pluginVersion(n);
+        const ver = v ? ` <span class="wp-chip-ver">${escapeHtml(v)}</span>` : "";
+        return `<span class="wp-chip plugin">${escapeHtml(n)}${ver}</span>`;
+      })
+      .join("")}</div>`;
+
   // Merge plugins found in HTML with any found via deep scan REST namespaces.
   let plugins = [...wp.plugins];
   if (deep && deep.restPlugins) {
@@ -272,7 +292,7 @@ function renderWordPress(signals, techs, deep) {
     ${plugins.length ? `
     <div class="wp-group">
       <div class="wp-group-label">${escapeHtml(tr("wp_plugins"))}</div>
-      ${chips(plugins, "plugin")}
+      ${pluginChips(plugins)}
     </div>` : ""}
     ${deep && deep.restApi ? `
     <div class="wp-group">
