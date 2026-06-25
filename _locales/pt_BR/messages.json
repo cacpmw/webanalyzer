@@ -163,6 +163,7 @@
   "opt_n8n_section": { "message": "n8n Webhook" },
   "opt_n8n_hint": { "message": "O processamento da IA ocorre dentro do seu próprio workflow n8n. A extensão envia o payload de análise e recebe o relatório formatado." },
   "opt_llm_section": { "message": "API de LLM Direta" },
+  "opt_llm_soon": { "message": "em breve" },
   "opt_llm_hint": { "message": "A extensão chama o provider de LLM diretamente. Sua chave de API é armazenada localmente no navegador e nunca transmitida para servidores do WebAnalyzer." },
   "opt_llm_provider": { "message": "Provider de LLM" },
   "opt_llm_apikey": { "message": "Chave de API" },

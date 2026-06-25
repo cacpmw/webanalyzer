@@ -163,6 +163,7 @@
   "opt_n8n_section": { "message": "n8n-Webhook" },
   "opt_n8n_hint": { "message": "Die KI-Verarbeitung läuft in deinem eigenen n8n-Workflow. Die Erweiterung sendet die Analysedaten und erhält den formatierten Bericht zurück." },
   "opt_llm_section": { "message": "Direkte LLM-API" },
+  "opt_llm_soon": { "message": "demnächst" },
   "opt_llm_hint": { "message": "Die Erweiterung ruft den LLM-Anbieter direkt auf. Dein API-Schlüssel wird lokal in deinem Browser gespeichert und niemals an WebAnalyzer-Server übertragen." },
   "opt_llm_provider": { "message": "LLM-Anbieter" },
   "opt_llm_apikey": { "message": "API-Schlüssel" },

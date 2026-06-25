@@ -72,6 +72,9 @@
       line-height: 1.5;
       margin-bottom: var(--sp-5);
     }
+    /* Parked feature (LLM API): dim the whole section and block interaction. */
+    .section-disabled { opacity: 0.55; }
+    input:disabled, select:disabled { cursor: not-allowed; }
     .hint {
       font-size: var(--fs-sm);
       color: var(--text-muted);
@@ -132,13 +135,16 @@
     <p class="section-hint" data-i18n="opt_n8n_hint">AI processing runs inside your own n8n workflow. The extension sends the analysis payload and receives the formatted report back.</p>
   </div>
 
-  <div class="section">
-    <h2 class="section-title" data-i18n="opt_llm_section">Direct LLM API</h2>
+  <div class="section section-disabled">
+    <h2 class="section-title">
+      <span data-i18n="opt_llm_section">Direct LLM API</span>
+      <span class="soon" data-i18n="opt_llm_soon">coming soon</span>
+    </h2>
     <p class="section-hint" data-i18n="opt_llm_hint">The extension calls the LLM provider directly. Your API key is stored locally in your browser and never transmitted to WebAnalyzer servers.</p>
 
     <div class="field">
       <label for="llmProvider" data-i18n="opt_llm_provider">LLM Provider</label>
-      <select id="llmProvider">
+      <select id="llmProvider" disabled>
         <option value="openai">OpenAI (GPT-4o)</option>
         <option value="anthropic">Anthropic (Claude)</option>
         <option value="gemini">Google Gemini</option>
@@ -148,13 +154,13 @@
 
     <div class="field">
       <label for="llmApiKey" data-i18n="opt_llm_apikey">API Key</label>
-      <input type="password" id="llmApiKey" placeholder="sk-..." />
+      <input type="password" id="llmApiKey" placeholder="sk-..." disabled />
       <p class="hint" data-i18n="opt_llm_apikey_hint">Stored locally in your browser. Never transmitted to WebAnalyzer servers.</p>
     </div>
 
     <div class="field" id="customUrlGroup" style="display:none;">
       <label for="llmCustomUrl" data-i18n="opt_llm_custom_url">Custom Base URL</label>
-      <input type="url" id="llmCustomUrl" placeholder="https://your-ollama-instance.com/v1" />
+      <input type="url" id="llmCustomUrl" placeholder="https://your-ollama-instance.com/v1" disabled />
       <p class="hint" data-i18n="opt_llm_custom_url_hint">Base URL for your custom endpoint (e.g. Ollama, Groq, LM Studio). Must be compatible with the OpenAI chat completions API format (/v1/chat/completions).</p>
     </div>
   </div>

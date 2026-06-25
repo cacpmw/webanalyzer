@@ -964,25 +964,18 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     }
 
     // First time the AI tab is opened: check if integration is configured.
+    // The direct-LLM path isn't implemented yet (parked, "coming soon" in
+    // Settings), so the AI tab uses n8n only — even if a stale llmApiKey is
+    // still in storage. The mode selector stays dormant until LLM ships.
     if (target === "ai" && !aiLoaded) {
       aiLoaded = true;
-      chrome.storage.local.get(["webhookUrl", "llmApiKey"], (cfg) => {
+      chrome.storage.local.get(["webhookUrl"], (cfg) => {
         const hasWebhook = !!(cfg.webhookUrl && cfg.webhookUrl.trim());
-        const hasLlm = !!(cfg.llmApiKey && cfg.llmApiKey.trim());
-
-        if (!hasWebhook && !hasLlm) {
+        if (!hasWebhook) {
           showAiState("unconfigured");
           return;
         }
-
-        if (hasWebhook && hasLlm) {
-          // Let the user decide which integration to use.
-          showAiState("mode-select");
-          return;
-        }
-
-        // Only one is configured — use it directly.
-        aiActiveMode = hasWebhook ? "n8n" : "llm";
+        aiActiveMode = "n8n";
         showAiState("actions");
       });
     }
