@@ -42,6 +42,7 @@ const ALLOWLIST = [
   "detectors/network-detector.js",
   "_locales/en/messages.json",
   "_locales/pt_BR/messages.json",
+  "_locales/de/messages.json",
   "images/icon-16.png",
   "images/icon-48.png",
   "images/icon-128.png",
