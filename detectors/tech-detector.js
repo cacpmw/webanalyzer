@@ -151,7 +151,13 @@ const TechDetector = (() => {
       category: "JS Library",
       scripts: [/jquery[-.]?[\d.]*(\.min)?\.js/i],
       globals: ["jQuery"],
-      version: { from: "script", re: /jquery[-.]?([\d.]+)(\.min)?\.js/i },
+      version: {
+        from: "script",
+        re: [
+          /jquery[-.]?([\d.]+)(\.min)?\.js/i, // version in the filename
+          /jquery(?:\.min)?\.js\?[^"']*\bver=([\d.]+)/i, // WordPress-style ?ver=
+        ],
+      },
     },
     "Lodash": {
       category: "JS Library",
@@ -187,6 +193,10 @@ const TechDetector = (() => {
       html: [/elementor-(widget|section|element)/i, /\/uploads\/elementor\//i],
       globals: ["elementorFrontend"],
       implies: ["WordPress"],
+      // WordPress stamps the plugin version onto its enqueued assets' ?ver=.
+      // Require the core "elementor/assets" path so elementor-pro (own version)
+      // isn't picked up.
+      version: { from: "html", re: /plugins\/elementor\/assets\/[^"']*?[?&]ver=([\d.]+)/i },
     },
 
     // --- Web Servers (from headers) ---
@@ -365,9 +375,14 @@ const TechDetector = (() => {
         return m && m[1] ? m[1] : null;
       }
       if (v.from === "script" && signals.scripts) {
+        // re may be one regex or several (e.g. version in the filename OR in a
+        // ?ver= query string); first capture wins.
+        const res = Array.isArray(v.re) ? v.re : [v.re];
         for (const s of signals.scripts) {
-          const m = v.re.exec(s);
-          if (m && m[1]) return m[1];
+          for (const re of res) {
+            const m = re.exec(s);
+            if (m && m[1]) return m[1];
+          }
         }
       }
     } catch (e) {}

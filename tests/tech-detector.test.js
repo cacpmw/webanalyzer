@@ -51,6 +51,33 @@ describe("TechDetector.detect — detection by each signal type", () => {
     expect(jq.confidence).toBe(80); // scripts weight
   });
 
+  it("extracts the jQuery version from a WordPress-style ?ver= query string", () => {
+    const result = TechDetector.detect(
+      {
+        scripts: [
+          "https://site.example/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+          "https://site.example/wp-includes/js/jquery/jquery.min.js?ver=3.7.1",
+        ],
+      },
+      null
+    );
+    const jq = find(result, "jQuery");
+    expect(jq).toBeDefined();
+    // Must read jquery core's ?ver= (3.7.1), not jquery-migrate's (3.4.1).
+    expect(jq.version).toBe("3.7.1");
+  });
+
+  it("extracts the Elementor version from its core asset ?ver= (not elementor-pro)", () => {
+    const html =
+      '<div class="elementor-widget"></div>' +
+      '<link href="/wp-content/plugins/elementor-pro/assets/css/frontend.min.css?ver=3.99.0">' +
+      '<script src="/wp-content/plugins/elementor/assets/js/frontend.min.js?ver=3.21.0"></script>';
+    const result = TechDetector.detect({ html }, null);
+    const el = find(result, "Elementor");
+    expect(el).toBeDefined();
+    expect(el.version).toBe("3.21.0"); // core, not the pro 3.99.0
+  });
+
   describe("Tailwind CSS via HTML classes (lookbehind guard)", () => {
     it("matches a distinctive Tailwind class (bg-blue-500)", () => {
       const result = TechDetector.detect({ html: '<div class="bg-blue-500"></div>' }, null);
