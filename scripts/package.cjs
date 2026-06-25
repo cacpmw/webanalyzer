@@ -40,6 +40,7 @@ const ALLOWLIST = [
   "design-system.css",
   "detectors/tech-detector.js",
   "detectors/network-detector.js",
+  "detectors/vuln-scanner.js",
   "_locales/en/messages.json",
   "_locales/pt_BR/messages.json",
   "_locales/de/messages.json",
