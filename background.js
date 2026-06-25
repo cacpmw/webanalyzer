@@ -428,9 +428,10 @@ function hydrateOsvVuln(v) {
 async function runVulnScan(technologies, tabId) {
   const wrappers = VulnScanner.buildOsvQueries(technologies || []);
   if (!wrappers.length) {
-    // Nothing with a trustworthy version — never query without one.
+    // Nothing with a trustworthy version — never query without one. scanned:0
+    // lets the UI say "nothing to check" rather than "clean".
     await Logger.append(tabId, "vuln", "no verifiable versions", null);
-    return { ok: true, findings: [] };
+    return { ok: true, findings: [], scanned: 0 };
   }
 
   let batchJson;
@@ -455,7 +456,7 @@ async function runVulnScan(technologies, tabId) {
   const found = VulnScanner.parseOsvBatchResponse(wrappers, batchJson);
   if (!found.length) {
     await Logger.append(tabId, "vuln", "osv → clean", null);
-    return { ok: true, findings: [] };
+    return { ok: true, findings: [], scanned: wrappers.length };
   }
 
   // Hydrate details for unique IDs, capped so a pathological page can't fan out.
@@ -499,7 +500,7 @@ async function runVulnScan(technologies, tabId) {
   findings.sort((a, b) => worst(b) - worst(a));
 
   await Logger.append(tabId, "vuln", `osv → ${findings.length} techs with findings`, null);
-  return { ok: true, findings };
+  return { ok: true, findings, scanned: wrappers.length };
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

@@ -44,6 +44,15 @@ const els = {
   aiRetryBtn: document.getElementById("aiRetryBtn"),
   aiUnconfigured: document.getElementById("aiUnconfigured"),
   aiSettingsLink: document.getElementById("aiSettingsLink"),
+  // CVEs tab
+  cveLoading: document.getElementById("cveLoading"),
+  cveResult: document.getElementById("cveResult"),
+  cveList: document.getElementById("cveList"),
+  cveClean: document.getElementById("cveClean"),
+  cveNone: document.getElementById("cveNone"),
+  cveError: document.getElementById("cveError"),
+  cveErrorMsg: document.getElementById("cveErrorMsg"),
+  cveRetryBtn: document.getElementById("cveRetryBtn"),
 };
 
 let currentTab = null;
@@ -57,6 +66,8 @@ let aiCurrentReport = null; // text of the last generated report
 let aiCurrentType = null; // report type key of the last request
 let aiLoaded = false; // whether the AI tab config check has run
 let aiActiveMode = null; // "n8n" or "llm" — resolved at config check or mode selection
+let cveLoaded = false; // run the vuln scan once per popup session
+let cveCurrentFindings = null; // cache the last result for re-render
 
 // --- i18n ----------------------------------------------------------------
 // Thin wrapper over chrome.i18n. Chrome selects the locale from the browser
@@ -915,6 +926,26 @@ async function performDeepScan() {
   els.deepBtn.disabled = true;
   els.deepBtn.textContent = tr("deep_scanning");
   const deep = await runDeepScan(currentTab.id);
+  const wp = (currentTechs || []).find((t) => t.name === "WordPress");
+  if (wp && deep) {
+    // Propagate the deep-scanned version onto the WordPress tech so downstream
+    // consumers (the CVE scan) can use it — detect() only gets the version from
+    // the generator meta, which many sites omit.
+    if (deep.version && !wp.version) wp.version = deep.version;
+    // The deep scan definitively confirmed WordPress (wp-json exposed or a
+    // version pulled from the site), so the initial html-only confidence (70%)
+    // understates it — upgrade to certain and re-sort/re-render the stack.
+    if (deep.restApi || deep.version) {
+      wp.confidence = 100;
+      const marker = deep.restApi ? "REST API" : "deep scan";
+      if (!wp.matchedOn.includes(marker)) wp.matchedOn = [...wp.matchedOn, marker];
+      currentTechs.sort((a, b) => {
+        if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+        return a.category.localeCompare(b.category);
+      });
+      renderTech(currentTechs);
+    }
+  }
   // Reuse the techs computed during the main run (which had headers),
   // so the WordPress panel doesn't disappear.
   renderWordPress(
@@ -978,6 +1009,12 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
         aiActiveMode = "n8n";
         showAiState("actions");
       });
+    }
+
+    // First time the CVEs tab is opened: scan the detected versions against OSV.
+    if (target === "cve" && !cveLoaded) {
+      cveLoaded = true;
+      runCveScan();
     }
   });
 });
@@ -1698,7 +1735,115 @@ els.aiSettingsLink.addEventListener("click", (e) => {
   chrome.runtime.openOptionsPage();
 });
 
+// --- CVEs tab ------------------------------------------------------------
+
+// Pure: maps a target state name to a {state -> hidden?} object. DOM-free so the
+// show/hide decision can be unit-tested without elements.
+function cveStateMap(which) {
+  const states = ["loading", "result", "clean", "none", "error"];
+  const map = {};
+  states.forEach((s) => {
+    map[s] = s !== which;
+  });
+  return map;
+}
+
+// Pure: CSS class for a severity label (unknown for anything unrecognized).
+function cveSeverityClass(severity) {
+  const known = ["critical", "high", "medium", "low"];
+  return known.includes(severity) ? `sev-${severity}` : "sev-unknown";
+}
+
+function showCveState(which) {
+  const map = cveStateMap(which);
+  els.cveLoading.hidden = map["loading"];
+  els.cveResult.hidden = map["result"];
+  els.cveClean.hidden = map["clean"];
+  els.cveNone.hidden = map["none"];
+  els.cveError.hidden = map["error"];
+}
+
+function renderCveError() {
+  els.cveErrorMsg.textContent = tr("cve_err_generic");
+  showCveState("error");
+}
+
+function renderCveFindings(findings) {
+  const countLabel = (n) => (n === 1 ? tr("cve_count_one") : `${n} ${tr("cve_count_many")}`);
+
+  els.cveList.innerHTML = findings
+    .map((f) => {
+      const vulns = f.vulns
+        .map((v) => {
+          const cls = cveSeverityClass(v.severity);
+          const fixed = v.fixedVersion
+            ? `<span class="cve-fixed">${escapeHtml(tr("cve_fixed_in"))} ${escapeHtml(v.fixedVersion)}</span>`
+            : "";
+          const summary = v.summary
+            ? `<div class="cve-summary">${escapeHtml(v.summary)}</div>`
+            : "";
+          return `
+            <div class="cve-vuln">
+              <div class="cve-vuln-head">
+                <span class="cve-pill ${cls}">${escapeHtml(v.severity)}</span>
+                <span class="cve-id" data-copy="${escapeHtml(v.id)}" title="${escapeHtml(tr("sub_copy_title"))}">${escapeHtml(v.id)}</span>
+                ${fixed}
+              </div>
+              ${summary}
+            </div>`;
+        })
+        .join("");
+
+      return `
+        <div class="cve-item">
+          <div class="cve-tech">
+            <span class="cve-tech-name">${escapeHtml(f.tech)}</span>
+            <span class="cve-tech-version">${escapeHtml(f.version)}</span>
+            <span class="cve-count">${escapeHtml(countLabel(f.count))}</span>
+          </div>
+          ${vulns}
+        </div>`;
+    })
+    .join("");
+
+  showCveState("result");
+}
+
+function runCveScan() {
+  showCveState("loading");
+
+  // Never scan without something version-identified to check.
+  if ((currentTechs || []).length === 0) {
+    showCveState("none");
+    return;
+  }
+
+  chrome.runtime.sendMessage(
+    {
+      action: "vulnScan",
+      technologies: currentTechs || [],
+      tabId: currentTab && currentTab.id,
+    },
+    (result) => {
+      if (chrome.runtime.lastError || !result || !result.ok) {
+        renderCveError();
+        return;
+      }
+      if (!result.findings.length) {
+        // Distinguish "scanned, nothing found" (clean) from "nothing had a
+        // verifiable version to scan" (none).
+        showCveState(result.scanned ? "clean" : "none");
+        return;
+      }
+      cveCurrentFindings = result.findings;
+      renderCveFindings(result.findings);
+    }
+  );
+}
+
+els.cveRetryBtn.addEventListener("click", runCveScan);
+
 // Exposed for unit tests; harmless in the browser (module is undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { aiStateMap, aiErrorMessage };
+  module.exports = { aiStateMap, aiErrorMessage, cveStateMap, cveSeverityClass };
 }

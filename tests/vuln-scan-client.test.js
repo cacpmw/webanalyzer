@@ -30,7 +30,7 @@ beforeEach(() => {
 describe("runVulnScan", () => {
   it("returns { ok: true, findings: [] } and makes NO fetch when no verifiable versions", async () => {
     const r = await runVulnScan([tech({ name: "Cloudflare", version: null })], 1);
-    expect(r).toEqual({ ok: true, findings: [] });
+    expect(r).toEqual({ ok: true, findings: [], scanned: 0 });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -68,7 +68,7 @@ describe("runVulnScan", () => {
   it("returns findings: [] when OSV reports no vulns", async () => {
     global.fetch.mockResolvedValue(jsonResp({ results: [{ vulns: [] }] }));
     const r = await runVulnScan([tech({ name: "jQuery", version: "1.8.3" })], 1);
-    expect(r).toEqual({ ok: true, findings: [] });
+    expect(r).toEqual({ ok: true, findings: [], scanned: 1 });
   });
 
   it("hydrates vuln detail and returns a finding with severity label + fixedVersion", async () => {

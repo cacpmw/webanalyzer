@@ -19,6 +19,7 @@
     <button class="tab-btn" data-tab="whois" role="tab" aria-selected="false" data-i18n="tab_whois">Whois</button>
     <button class="tab-btn" data-tab="headers" role="tab" aria-selected="false" data-i18n="tab_headers">Headers</button>
     <button class="tab-btn" data-tab="ai" role="tab" aria-selected="false" data-i18n="tab_ai">AI</button>
+    <button class="tab-btn" data-tab="cve" role="tab" aria-selected="false" data-i18n="tab_cve">CVEs</button>
   </nav>
 
   <main class="app-body" id="body">
@@ -179,6 +180,47 @@
           <div class="ai-unconfigured" id="aiUnconfigured" hidden>
             <p class="state-mono" data-i18n="ai_not_configured">No AI integration configured.</p>
             <a class="btn" id="aiSettingsLink" data-i18n="ai_go_settings">Open Settings</a>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== CVE VIEW ===================== -->
+    <div class="tab-view" id="view-cve">
+      <section class="panel" id="cvePanel">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="cve_panel_title">Known Vulnerabilities</span>
+        </div>
+        <div class="panel-body" id="cveBody">
+
+          <!-- Loading -->
+          <div class="cve-loading" id="cveLoading" hidden>
+            <div class="spinner"></div>
+            <div class="state-mono" data-i18n="cve_scanning">checking versions against OSV…</div>
+          </div>
+
+          <!-- Results list -->
+          <div class="cve-result" id="cveResult" hidden>
+            <div class="cve-list" id="cveList"></div>
+            <p class="cve-note" data-i18n="cve_note">Only technologies with a detectable version are checked. Items without an exposed version are not listed.</p>
+          </div>
+
+          <!-- Clean (verifiable items, but no known vulns) -->
+          <div class="cve-clean" id="cveClean" hidden>
+            <p class="state-mono" data-i18n="cve_clean">No known vulnerabilities in the detected versions.</p>
+            <p class="cve-note" data-i18n="cve_note">Only technologies with a detectable version are checked. Items without an exposed version are not listed.</p>
+          </div>
+
+          <!-- Nothing verifiable to scan -->
+          <div class="cve-none" id="cveNone" hidden>
+            <p class="state-mono" data-i18n="cve_nothing">No version-identified technologies to check on this page.</p>
+          </div>
+
+          <!-- Error -->
+          <div class="cve-error" id="cveError" hidden>
+            <span class="state-mono" id="cveErrorMsg"></span>
+            <button class="btn" id="cveRetryBtn" data-i18n="cve_retry">Try again</button>
           </div>
 
         </div>

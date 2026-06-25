@@ -69,6 +69,9 @@ body {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Always reserve the scrollbar gutter so panels keep the same right margin
+     whether or not a tab's content scrolls (e.g. Stack vs a short CVEs state). */
+  scrollbar-gutter: stable;
   padding: var(--sp-4);
 }
 
@@ -597,11 +600,16 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   padding: 0 var(--sp-3);
+  /* Safety net: if a locale's labels ever overflow, scroll instead of clipping
+     the last tab against the edge (scrollbar hidden — tabs stay tidy). */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.app-tabs::-webkit-scrollbar { display: none; }
 
 .tab-btn {
   flex: 0 0 auto;
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-3);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1166,4 +1174,129 @@ body {
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-3);
   text-align: center;
+}
+
+/* ============================================
+   CVE TAB
+   ============================================ */
+
+.cve-loading,
+.cve-clean,
+.cve-none,
+.cve-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-3);
+  text-align: center;
+}
+
+.cve-result {
+  padding: var(--sp-3);
+}
+
+.cve-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.cve-item {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+}
+
+.cve-tech {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.cve-tech-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+}
+
+.cve-tech-version {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.cve-count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.cve-vuln {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.cve-vuln-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.cve-pill {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px var(--sp-2);
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+}
+
+.sev-critical { color: var(--danger); }
+.sev-high { color: var(--danger); }
+.sev-medium { color: var(--warn); }
+.sev-low { color: var(--text-secondary); }
+.sev-unknown { color: var(--text-muted); }
+
+.cve-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.cve-fixed {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ok);
+}
+
+.cve-summary {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: var(--sp-1);
+}
+
+.cve-note {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: var(--sp-3);
+}
+
+/* The flex/block rules above beat the UA [hidden] rule (equal specificity,
+   author wins), so without this every CVE state shows at once and the spinner
+   never hides. Re-assert none for hidden containers so showCveState works. */
+.cve-loading[hidden],
+.cve-result[hidden],
+.cve-clean[hidden],
+.cve-none[hidden],
+.cve-error[hidden] {
+  display: none;
 }
