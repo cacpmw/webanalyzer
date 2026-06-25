@@ -6,6 +6,7 @@
 // when the browser closes). Also resolves IP via DNS-over-HTTPS as a fallback.
 
 importScripts("logger.js");
+importScripts("detectors/vuln-scanner.js");
 
 const KEY = (tabId) => `tab_${tabId}`;
 
@@ -375,6 +376,132 @@ async function sendToN8n(payload, webhookUrl, authToken, tabId) {
   }
 }
 
+// --- Vulnerability insights (OSV.dev) ------------------------------------
+// Order of severity labels, worst first, for sorting findings.
+const VULN_SEVERITY_RANK = { critical: 4, high: 3, medium: 2, low: 1, unknown: 0 };
+
+// Extract the fields we render from a single OSV vuln record. Best-effort and
+// defensive — OSV records vary, and a partial record must still yield something.
+function hydrateOsvVuln(v) {
+  const summary = v.summary || (v.details ? String(v.details).slice(0, 200) : "") || "";
+
+  // OSV severity entries are { type, score } where score is usually a CVSS
+  // VECTOR string, not a number. Only use it when it's actually numeric; we do
+  // not parse vectors here, so a vector-only record stays score null (→ unknown).
+  let score = null;
+  if (Array.isArray(v.severity)) {
+    for (const s of v.severity) {
+      const n = Number(s && s.score);
+      if (s && s.score != null && !Number.isNaN(n) && n > 0) {
+        score = n;
+        break;
+      }
+    }
+  }
+
+  // First fixed version found across affected[].ranges[].events[].
+  let fixedVersion = null;
+  const affected = Array.isArray(v.affected) ? v.affected : [];
+  for (const a of affected) {
+    const ranges = Array.isArray(a.ranges) ? a.ranges : [];
+    for (const rg of ranges) {
+      const events = Array.isArray(rg.events) ? rg.events : [];
+      for (const ev of events) {
+        if (ev && ev.fixed) { fixedVersion = ev.fixed; break; }
+      }
+      if (fixedVersion) break;
+    }
+    if (fixedVersion) break;
+  }
+
+  return {
+    id: v.id,
+    summary,
+    severity: VulnScanner.summarizeSeverity(score),
+    score,
+    fixedVersion,
+  };
+}
+
+// Passive vulnerability scan: correlate versioned techs to OSV.dev advisories.
+// Self-contained (VulnScanner + Logger.append + fetch) so it stays testable.
+async function runVulnScan(technologies, tabId) {
+  const wrappers = VulnScanner.buildOsvQueries(technologies || []);
+  if (!wrappers.length) {
+    // Nothing with a trustworthy version — never query without one.
+    await Logger.append(tabId, "vuln", "no verifiable versions", null);
+    return { ok: true, findings: [] };
+  }
+
+  let batchJson;
+  try {
+    const resp = await fetch("https://api.osv.dev/v1/querybatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queries: wrappers.map((w) => w.query) }),
+      credentials: "omit",
+      cache: "no-store",
+    });
+    if (!resp.ok) {
+      await Logger.append(tabId, "vuln", `osv batch → ${resp.status}`, null);
+      return { ok: false, error: "osv_error", status: resp.status };
+    }
+    batchJson = await resp.json();
+  } catch (e) {
+    await Logger.append(tabId, "vuln", "osv batch → network error", e.message);
+    return { ok: false, error: "network_error", message: e.message };
+  }
+
+  const found = VulnScanner.parseOsvBatchResponse(wrappers, batchJson);
+  if (!found.length) {
+    await Logger.append(tabId, "vuln", "osv → clean", null);
+    return { ok: true, findings: [] };
+  }
+
+  // Hydrate details for unique IDs, capped so a pathological page can't fan out.
+  const uniqueIds = [];
+  const seen = new Set();
+  found.forEach((f) =>
+    f.vulnIds.forEach((id) => {
+      if (id && !seen.has(id)) { seen.add(id); uniqueIds.push(id); }
+    })
+  );
+  const HYDRATE_CAP = 50;
+  const toHydrate = uniqueIds.slice(0, HYDRATE_CAP);
+
+  const details = {};
+  for (const id of toHydrate) {
+    try {
+      const r = await fetch(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`, {
+        credentials: "omit",
+        cache: "no-store",
+      });
+      if (!r.ok) continue; // keep id-only, don't fail the scan
+      details[id] = hydrateOsvVuln(await r.json());
+    } catch (e) {
+      // A single hydration failure must not abort the whole scan.
+    }
+  }
+
+  const findings = found.map((f) => ({
+    tech: f.tech,
+    version: f.version,
+    count: f.vulnIds.length,
+    vulns: f.vulnIds.map(
+      (id) =>
+        details[id] || { id, summary: "", severity: "unknown", score: null, fixedVersion: null }
+    ),
+  }));
+
+  // Surface the tech with the worst vuln first.
+  const worst = (finding) =>
+    finding.vulns.reduce((max, v) => Math.max(max, VULN_SEVERITY_RANK[v.severity] || 0), 0);
+  findings.sort((a, b) => worst(b) - worst(a));
+
+  await Logger.append(tabId, "vuln", `osv → ${findings.length} techs with findings`, null);
+  return { ok: true, findings };
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getHeaders") {
     getTab(request.tabId).then(async (data) => {
@@ -447,10 +574,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then((result) => sendResponse(result));
     return true;
   }
+  if (request.action === "vulnScan") {
+    runVulnScan(request.technologies, request.tabId)
+      .then((result) => sendResponse(result));
+    return true;
+  }
   return false;
 });
 
 // Exposed for unit tests; harmless in the service worker (module is undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { sendToN8n };
+  module.exports = { sendToN8n, runVulnScan };
 }
