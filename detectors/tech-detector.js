@@ -80,6 +80,16 @@ const TechDetector = (() => {
       html: [/woocommerce/i, /wc-block/i],
       globals: ["wc", "woocommerce_params"],
       implies: ["WordPress"],
+      // Version from the generator meta (read from raw HTML, since a page can
+      // carry several <meta generator> that clobber each other in the parsed
+      // map) or, failing that, the WooCommerce assets' ?ver= (dotted only).
+      version: {
+        from: "html",
+        re: [
+          /content=["']WooCommerce\s+([\d.]+)/i,
+          /plugins\/woocommerce\/[^"']*?[?&]ver=(\d+\.\d[\d.]*)/i,
+        ],
+      },
     },
     PrestaShop: {
       category: "Ecommerce",
@@ -155,7 +165,7 @@ const TechDetector = (() => {
         from: "script",
         re: [
           /jquery[-.]?([\d.]+)(\.min)?\.js/i, // version in the filename
-          /jquery(?:\.min)?\.js\?[^"']*\bver=([\d.]+)/i, // WordPress-style ?ver=
+          /jquery(?:\.min)?\.js\?[^"']*\bver=(\d+\.\d[\d.]*)/i, // WordPress-style ?ver= (dotted only)
         ],
       },
     },
@@ -196,7 +206,7 @@ const TechDetector = (() => {
       // WordPress stamps the plugin version onto its enqueued assets' ?ver=.
       // Require the core "elementor/assets" path so elementor-pro (own version)
       // isn't picked up.
-      version: { from: "html", re: /plugins\/elementor\/assets\/[^"']*?[?&]ver=([\d.]+)/i },
+      version: { from: "html", re: /plugins\/elementor\/assets\/[^"']*?[?&]ver=(\d+\.\d[\d.]*)/i },
     },
 
     // --- Web Servers (from headers) ---
@@ -351,6 +361,24 @@ const TechDetector = (() => {
     html: 70,
   };
 
+  // Techs whose signals are unambiguous — a vendor-specific global/cookie, or a
+  // unique external resource (CDN host, service URL). A match means the tech is
+  // certainly present, so it reports 100% confidence regardless of signal tier.
+  // Deliberately EXCLUDES heuristic detections (CSS class-name guesses, generic
+  // words like "magento"/"woocommerce", "fa-" icons) which keep their weight, so
+  // the score still flags the genuinely-uncertain ones. WordPress is omitted on
+  // purpose: it reaches 100% via its version / deep-scan confirmation.
+  const CONFIDENT_TECHS = new Set([
+    "Drupal", "Joomla", "Squarespace", "Wix", "Webflow",
+    "Shopify", "BigCommerce",
+    "React", "Next.js", "Vue.js", "Nuxt.js", "Angular", "Svelte",
+    "Gatsby", "Remix", "Alpine.js", "jQuery", "Lodash",
+    "Google Fonts", "Elementor",
+    "PHP", "ASP.NET", "Node.js", "Express.js", "Ruby on Rails", "Java", "Laravel",
+    "Google Tag Manager", "Google Analytics", "Facebook Pixel", "Hotjar",
+    "Stripe", "PayPal",
+  ]);
+
   function testRegexList(list, value) {
     if (!value) return false;
     return list.some((re) => re.test(value));
@@ -371,8 +399,14 @@ const TechDetector = (() => {
         return m && m[1] ? m[1] : null;
       }
       if (v.from === "html" && signals.html) {
-        const m = v.re.exec(signals.html);
-        return m && m[1] ? m[1] : null;
+        // re may be one regex or several (e.g. a generator meta OR an asset
+        // ?ver=); first capture wins.
+        const res = Array.isArray(v.re) ? v.re : [v.re];
+        for (const re of res) {
+          const m = re.exec(signals.html);
+          if (m && m[1]) return m[1];
+        }
+        return null;
       }
       if (v.from === "script" && signals.scripts) {
         // re may be one regex or several (e.g. version in the filename OR in a
@@ -495,15 +529,19 @@ const TechDetector = (() => {
       }
 
       if (confidence > 0) {
+        const version = extractVersion(sig, signals, headers);
+        // A captured version, or a match on an unambiguous signal (see
+        // CONFIDENT_TECHS), means the tech is certainly present → full confidence.
+        const certain = !!version || CONFIDENT_TECHS.has(name);
         detected[name] = {
           name,
           category: sig.category,
-          confidence,
+          confidence: certain ? 100 : confidence,
           matchedOn,
           evidence,
           implied: false,
           implies: sig.implies || [],
-          version: extractVersion(sig, signals, headers),
+          version,
         };
       }
     });

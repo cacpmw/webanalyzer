@@ -19,25 +19,54 @@ describe("TechDetector.detect — detection by each signal type", () => {
   });
 
   it("detects WordPress from the generator meta with meta-weight confidence (95)", () => {
-    const result = TechDetector.detect({ meta: { generator: "WordPress 6.4" } }, null);
+    // Versionless generator so this exercises the meta weight, not the
+    // version-override-to-100 rule (covered separately below).
+    const result = TechDetector.detect({ meta: { generator: "WordPress" } }, null);
     const wp = find(result, "WordPress");
     expect(wp).toBeDefined();
+    expect(wp.version).toBeNull();
     expect(wp.confidence).toBe(95);
   });
 
-  it("detects React from a window global", () => {
+  it("reports 100% confidence when a version is identified (overrides signal weight)", () => {
+    // WordPress via generator meta is weight 95, but a captured version is proof.
+    const result = TechDetector.detect({ meta: { generator: "WordPress 6.4" } }, null);
+    const wp = find(result, "WordPress");
+    expect(wp.version).toBe("6.4");
+    expect(wp.confidence).toBe(100);
+  });
+
+  it("detects React from a window global (unambiguous → 100%)", () => {
     const result = TechDetector.detect({ globals: ["React"] }, null);
     const react = find(result, "React");
     expect(react).toBeDefined();
     expect(react.implied).toBe(false);
-    expect(react.confidence).toBe(85); // globals weight
+    expect(react.confidence).toBe(100); // window.React is unambiguous
   });
 
-  it("detects PHP from the PHPSESSID cookie", () => {
+  it("detects PHP from the PHPSESSID cookie (unambiguous → 100%)", () => {
     const result = TechDetector.detect({ cookies: ["PHPSESSID"] }, null);
     const php = find(result, "PHP");
     expect(php).toBeDefined();
-    expect(php.confidence).toBe(90); // cookies weight
+    expect(php.confidence).toBe(100); // PHPSESSID is unambiguous
+  });
+
+  it("reports 100% for an unambiguous tech even without a version (Google Fonts)", () => {
+    const result = TechDetector.detect(
+      { html: '<link href="https://fonts.googleapis.com/css?family=Inter">' },
+      null
+    );
+    const gf = find(result, "Google Fonts");
+    expect(gf).toBeDefined();
+    expect(gf.version).toBeNull();
+    expect(gf.confidence).toBe(100);
+  });
+
+  it("keeps the html weight (70) for a heuristic class-name match (Tailwind)", () => {
+    const result = TechDetector.detect({ html: '<div class="bg-blue-500"></div>' }, null);
+    const tw = find(result, "Tailwind CSS");
+    expect(tw).toBeDefined();
+    expect(tw.confidence).toBe(70); // heuristic — stays weighted
   });
 
   it("detects jQuery from a script src and extracts the version", () => {
@@ -48,7 +77,7 @@ describe("TechDetector.detect — detection by each signal type", () => {
     const jq = find(result, "jQuery");
     expect(jq).toBeDefined();
     expect(jq.version).toBe("3.6.0");
-    expect(jq.confidence).toBe(80); // scripts weight
+    expect(jq.confidence).toBe(100); // version identified → certain
   });
 
   it("extracts the jQuery version from a WordPress-style ?ver= query string", () => {
@@ -65,6 +94,36 @@ describe("TechDetector.detect — detection by each signal type", () => {
     expect(jq).toBeDefined();
     // Must read jquery core's ?ver= (3.7.1), not jquery-migrate's (3.4.1).
     expect(jq.version).toBe("3.7.1");
+  });
+
+  it("extracts the WooCommerce version from its generator meta", () => {
+    const html =
+      '<body class="woocommerce-page"></body>' +
+      '<meta name="generator" content="WordPress 7.0">' +
+      '<meta name="generator" content="WooCommerce 8.5.1">';
+    const result = TechDetector.detect({ html }, null);
+    const wc = find(result, "WooCommerce");
+    expect(wc).toBeDefined();
+    expect(wc.version).toBe("8.5.1"); // found even amid other generator metas
+    expect(wc.confidence).toBe(100); // version → certain
+  });
+
+  it("extracts the WooCommerce version from its asset ?ver= when no generator meta", () => {
+    const html =
+      '<div class="woocommerce"></div>' +
+      '<link href="/wp-content/plugins/woocommerce/assets/css/woocommerce.css?ver=9.2.3">';
+    const wc = find(TechDetector.detect({ html }, null), "WooCommerce");
+    expect(wc.version).toBe("9.2.3");
+  });
+
+  it("ignores a cache-busting timestamp in ?ver= (not a real version)", () => {
+    const result = TechDetector.detect(
+      { scripts: ["https://site.example/wp-includes/js/jquery/jquery.min.js?ver=1771584108"] },
+      null
+    );
+    const jq = find(result, "jQuery");
+    expect(jq).toBeDefined(); // still detected
+    expect(jq.version).toBeNull(); // timestamp rejected, not shown as a version
   });
 
   it("extracts the Elementor version from its core asset ?ver= (not elementor-pro)", () => {
@@ -126,8 +185,8 @@ describe("TechDetector.detect — implications", () => {
     const result = TechDetector.detect({ globals: ["React", "__NEXT_DATA__"] }, null);
     const react = find(result, "React");
     expect(react).toBeDefined();
-    expect(react.implied).toBe(false);
-    expect(react.confidence).toBe(85); // stays the direct-detection confidence
+    expect(react.implied).toBe(false); // direct detection, not the implied one
+    expect(react.confidence).toBe(100); // unambiguous global
   });
 });
 
@@ -144,16 +203,17 @@ describe("TechDetector.detect — ordering and confidence", () => {
     expect(confs[0]).toBe(100);
   });
 
-  it("uses the highest weight when a tech matches on multiple signals", () => {
-    // React matches both globals (85) and html data-reactroot (70).
+  it("uses the highest weight when a (non-confident) tech matches on multiple signals", () => {
+    // Bootstrap is heuristic (not in CONFIDENT_TECHS): matches html col-* (70)
+    // and a script (80) → max weight 80, not bumped to 100.
     const result = TechDetector.detect(
-      { globals: ["React"], html: "<div data-reactroot></div>" },
+      { html: '<div class="col-md-6"></div>', scripts: ["/assets/bootstrap.min.js"] },
       null
     );
-    const react = find(result, "React");
-    expect(react.confidence).toBe(85);
-    expect(react.matchedOn).toContain("globals");
-    expect(react.matchedOn).toContain("html");
+    const bs = find(result, "Bootstrap");
+    expect(bs.confidence).toBe(80);
+    expect(bs.matchedOn).toContain("scripts");
+    expect(bs.matchedOn).toContain("html");
   });
 });
 
