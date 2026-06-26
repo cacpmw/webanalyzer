@@ -6,10 +6,19 @@
 
 const Logger = (() => {
   const KEY = (tabId) => `log_${tabId}`;
+  const GLOBAL_KEY = "log_global"; // tab-less events (e.g. remote signature fetch)
   const MAX_ENTRIES = 500; // hard cap so a session can never bloat memory
 
+  async function readEntries(k) {
+    const cur = await chrome.storage.session.get(k);
+    return (cur[k] && cur[k].entries) || [];
+  }
+
   async function append(tabId, category, message, data) {
-    if (tabId == null) return;
+    // Tab-less events (tabId == null) go to a shared global bucket instead of
+    // being dropped, so background diagnostics like remote signature fetches
+    // still reach the exported log.
+    const k = tabId == null ? GLOBAL_KEY : KEY(tabId);
     const entry = {
       t: new Date().toISOString(),
       category,
@@ -17,11 +26,9 @@ const Logger = (() => {
       data: data === undefined ? null : data,
     };
     try {
-      const k = KEY(tabId);
-      const cur = await chrome.storage.session.get(k);
-      const list = (cur[k] && cur[k].entries) || [];
+      const list = await readEntries(k);
       list.push(entry);
-      // Keep only the most recent MAX_ENTRIES.
+      // Keep only the most recent MAX_ENTRIES (applies to the global bucket too).
       const trimmed = list.slice(-MAX_ENTRIES);
       await chrome.storage.session.set({ [k]: { entries: trimmed } });
     } catch (e) {
@@ -31,9 +38,11 @@ const Logger = (() => {
 
   async function get(tabId) {
     try {
-      const k = KEY(tabId);
-      const cur = await chrome.storage.session.get(k);
-      return (cur[k] && cur[k].entries) || [];
+      const global = await readEntries(GLOBAL_KEY);
+      const perTab = tabId == null ? [] : await readEntries(KEY(tabId));
+      // Merge tab + global events into one chronological stream. ISO timestamps
+      // sort lexicographically, which is chronological.
+      return perTab.concat(global).sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
     } catch (e) {
       return [];
     }
@@ -41,6 +50,8 @@ const Logger = (() => {
 
   async function clear(tabId) {
     try {
+      // Only the per-tab bucket is cleared; the global bucket is intentionally
+      // left intact, since its events may relate to other tabs/sessions.
       await chrome.storage.session.remove(KEY(tabId));
     } catch (e) {}
   }
