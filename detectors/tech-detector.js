@@ -104,22 +104,25 @@ const TechDetector = (() => {
     // Brazilian hosted store platform. The asset CDN host is the reliable tell
     // (verified live: every product image is served from cdn.vnda.com.br); the
     // footer "developed by" link is a weaker backup.
+    // Match only the asset-CDN host (proves the platform serves the page); a bare
+    // vnda.com.br link would also appear on a page that merely mentions/credits it.
     VNDA: {
       category: "Ecommerce",
-      html: [/cdn\.vnda\.com\.br/i, /vnda\.com\.br/i],
+      html: [/cdn\.vnda\.com\.br/i],
     },
-    // Nuvemshop / Tiendanube (same platform). Asset CDN hosts.
+    // Nuvemshop / Tiendanube (same platform). Asset CDN hosts only, not the bare
+    // institutional domain (which any review/comparison page could carry).
     Nuvemshop: {
       category: "Ecommerce",
-      html: [/[ad]cdn\.nuvemshop\.com\.br/i, /nuvemshop\.com\.br/i, /tiendanube\.com/i],
+      html: [/[ad]cdn\.nuvemshop\.com\.br/i, /\.tiendanube\.com\//i],
     },
     Tray: {
       category: "Ecommerce",
-      html: [/images\.tcdn\.com\.br/i, /tcdn\.com\.br/i, /\.tray\.com\.br/i],
+      html: [/images\.tcdn\.com\.br/i],
     },
     "Loja Integrada": {
       category: "Ecommerce",
-      html: [/awsli\.com\.br/i, /lojaintegrada\.com\.br/i],
+      html: [/awsli\.com\.br/i],
     },
     Yampi: {
       category: "Ecommerce",

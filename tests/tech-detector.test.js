@@ -164,10 +164,6 @@ describe("TechDetector.detect — e-commerce platforms", () => {
     expect(t.category).toBe("Ecommerce");
   });
 
-  it("detects VNDA from a vnda.com.br footer reference", () => {
-    expect(find(ecom('<a href="https://www.vnda.com.br">Loja por VNDA</a>'), "VNDA")).toBeDefined();
-  });
-
   it("detects Nuvemshop from its asset CDN host", () => {
     expect(find(ecom('<img src="https://dcdn.nuvemshop.com.br/x.png">'), "Nuvemshop")).toBeDefined();
   });
@@ -196,6 +192,24 @@ describe("TechDetector.detect — e-commerce platforms", () => {
 
   it("does NOT match Tray on the generic words 'tray table' in body text", () => {
     expect(find(ecom("<p>buy a wooden tray table in our store</p>"), "Tray")).toBeUndefined();
+  });
+
+  // A page that only MENTIONS/links a platform (review, comparison, "developed by"
+  // credit) must not be reported as running it — only its asset CDN proves usage.
+  it("does NOT detect VNDA from a bare vnda.com.br link in page text", () => {
+    expect(find(ecom('<a href="https://www.vnda.com.br">site by VNDA</a>'), "VNDA")).toBeUndefined();
+  });
+
+  it("does NOT detect Nuvemshop from a bare nuvemshop.com.br mention", () => {
+    expect(find(ecom('<a href="https://www.nuvemshop.com.br">Nuvemshop review</a>'), "Nuvemshop")).toBeUndefined();
+  });
+
+  it("does NOT detect Tray from a bare tray.com.br mention", () => {
+    expect(find(ecom('<a href="https://www.tray.com.br">Tray vs Nuvemshop</a>'), "Tray")).toBeUndefined();
+  });
+
+  it("does NOT detect Loja Integrada from a bare lojaintegrada.com.br mention", () => {
+    expect(find(ecom('<a href="https://www.lojaintegrada.com.br">Loja Integrada</a>'), "Loja Integrada")).toBeUndefined();
   });
 });
 
