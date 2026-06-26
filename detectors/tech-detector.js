@@ -101,6 +101,54 @@ const TechDetector = (() => {
       category: "Ecommerce",
       html: [/cdn\d*\.bigcommerce\.com/i],
     },
+    // Brazilian hosted store platform. The asset CDN host is the reliable tell
+    // (verified live: every product image is served from cdn.vnda.com.br); the
+    // footer "developed by" link is a weaker backup.
+    VNDA: {
+      category: "Ecommerce",
+      html: [/cdn\.vnda\.com\.br/i, /vnda\.com\.br/i],
+    },
+    // Nuvemshop / Tiendanube (same platform). Asset CDN hosts.
+    Nuvemshop: {
+      category: "Ecommerce",
+      html: [/[ad]cdn\.nuvemshop\.com\.br/i, /nuvemshop\.com\.br/i, /tiendanube\.com/i],
+    },
+    Tray: {
+      category: "Ecommerce",
+      html: [/images\.tcdn\.com\.br/i, /tcdn\.com\.br/i, /\.tray\.com\.br/i],
+    },
+    "Loja Integrada": {
+      category: "Ecommerce",
+      html: [/awsli\.com\.br/i, /lojaintegrada\.com\.br/i],
+    },
+    Yampi: {
+      category: "Ecommerce",
+      html: [/\byampi\.com\.br/i, /\byampi\.io/i],
+    },
+    VTEX: {
+      category: "Ecommerce",
+      html: [/vtexassets\.com/i, /vtexcommercestable/i],
+      meta: { generator: /vtex/i },
+    },
+    // Bagy runs on the Dooca Commerce platform; its asset host is the stable tell.
+    Bagy: {
+      category: "Ecommerce",
+      html: [/dooca\.store/i], // TODO: verify a dedicated bagy.com.br asset host
+    },
+    "Salesforce Commerce Cloud": {
+      category: "Ecommerce",
+      html: [/demandware\.(net|static)/i, /dwstatic/i],
+    },
+    Shopware: {
+      category: "Ecommerce",
+      meta: { generator: /shopware/i },
+      html: [/\/bundles\/storefront\//i], // TODO: verify across Shopware 5 vs 6 themes
+    },
+    OpenCart: {
+      category: "Ecommerce",
+      html: [/catalog\/view\/(theme|javascript)\//i],
+      implies: ["PHP"],
+    },
 
     // --- JS Frameworks ---
     React: {
@@ -371,6 +419,8 @@ const TechDetector = (() => {
   const CONFIDENT_TECHS = new Set([
     "Drupal", "Joomla", "Squarespace", "Wix", "Webflow",
     "Shopify", "BigCommerce",
+    "VNDA", "Nuvemshop", "Tray", "Loja Integrada", "Yampi", "VTEX",
+    "Salesforce Commerce Cloud",
     "React", "Next.js", "Vue.js", "Nuxt.js", "Angular", "Svelte",
     "Gatsby", "Remix", "Alpine.js", "jQuery", "Lodash",
     "Google Fonts", "Elementor",

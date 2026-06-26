@@ -607,6 +607,18 @@ async function run() {
 
   const techs = TechDetector.detect(safeSignals, headerData);
   currentTechs = techs;
+  // Record the detection outcome so a "nothing detected" result is diagnosable
+  // from the exported log (every other subsystem logs; stack didn't). Compact
+  // payload — names/categories/versions only, never raw HTML/scripts/evidence.
+  if (techs.length) {
+    logEvent(
+      "stack",
+      `detected ${techs.length} tech(s): ${techs.map((t) => t.name).join(", ")}`,
+      techs.map((t) => ({ name: t.name, category: t.category, version: t.version }))
+    );
+  } else {
+    logEvent("stack", "no technologies matched", null);
+  }
   renderTech(techs);
   renderWordPress(safeSignals, techs, null);
 

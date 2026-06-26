@@ -155,6 +155,50 @@ describe("TechDetector.detect — detection by each signal type", () => {
   });
 });
 
+describe("TechDetector.detect — e-commerce platforms", () => {
+  const ecom = (html) => TechDetector.detect({ html }, null);
+
+  it("detects VNDA from a cdn.vnda.com.br asset URL", () => {
+    const t = find(ecom('<img src="https://cdn.vnda.com.br/123/p.jpg">'), "VNDA");
+    expect(t).toBeDefined();
+    expect(t.category).toBe("Ecommerce");
+  });
+
+  it("detects VNDA from a vnda.com.br footer reference", () => {
+    expect(find(ecom('<a href="https://www.vnda.com.br">Loja por VNDA</a>'), "VNDA")).toBeDefined();
+  });
+
+  it("detects Nuvemshop from its asset CDN host", () => {
+    expect(find(ecom('<img src="https://dcdn.nuvemshop.com.br/x.png">'), "Nuvemshop")).toBeDefined();
+  });
+
+  it("detects Tray from its asset host", () => {
+    expect(find(ecom('<img src="https://images.tcdn.com.br/x.jpg">'), "Tray")).toBeDefined();
+  });
+
+  it("detects Loja Integrada from its asset host", () => {
+    expect(find(ecom('<img src="https://cdn.awsli.com.br/x.jpg">'), "Loja Integrada")).toBeDefined();
+  });
+
+  it("detects Yampi from its asset/checkout host", () => {
+    expect(find(ecom('<script src="https://api.yampi.com.br/v1/x.js">'), "Yampi")).toBeDefined();
+  });
+
+  it("detects VTEX from vtexassets.com", () => {
+    const t = find(ecom('<link href="https://store.vtexassets.com/a.css">'), "VTEX");
+    expect(t).toBeDefined();
+    expect(t.category).toBe("Ecommerce");
+  });
+
+  it("does NOT detect VNDA on an unrelated page", () => {
+    expect(find(ecom("<div>just a regular page with no platform signals</div>"), "VNDA")).toBeUndefined();
+  });
+
+  it("does NOT match Tray on the generic words 'tray table' in body text", () => {
+    expect(find(ecom("<p>buy a wooden tray table in our store</p>"), "Tray")).toBeUndefined();
+  });
+});
+
 describe("TechDetector.detect — implications", () => {
   it("Next.js implies React and Node.js (implied: true, confidence 50)", () => {
     const result = TechDetector.detect({ globals: ["__NEXT_DATA__"] }, null);
