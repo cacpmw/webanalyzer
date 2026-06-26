@@ -101,11 +101,14 @@ const TechDetector = (() => {
     }
   }
 
-  function detect(signals, headerData) {
+  // signatureSet lets the caller pass a merged (embedded + remote) set; it
+  // defaults to the embedded SIGNATURES so existing callers are unaffected.
+  function detect(signals, headerData, signatureSet) {
     const headers = (headerData && headerData.headers) || {};
     const detected = {};
+    const SIGS = signatureSet || SIGNATURES;
 
-    Object.entries(SIGNATURES).forEach(([name, sig]) => {
+    Object.entries(SIGS).forEach(([name, sig]) => {
       let confidence = 0;
       const matchedOn = [];
       const evidence = []; // { type, source, detail }
@@ -210,7 +213,7 @@ const TechDetector = (() => {
     Object.values({ ...detected }).forEach((tech) => {
       tech.implies.forEach((impliedName) => {
         if (!detected[impliedName]) {
-          const sig = SIGNATURES[impliedName];
+          const sig = SIGS[impliedName];
           detected[impliedName] = {
             name: impliedName,
             category: sig ? sig.category : "Unknown",

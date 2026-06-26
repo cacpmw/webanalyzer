@@ -22,13 +22,15 @@
   // Recursively turn { $re, flags } markers into RegExp; leave everything else
   // (strings, arrays of strings, plain fields) untouched. Field-name agnostic,
   // so it handles html/scripts/cookies arrays, headers/meta objects and the
-  // version rule's `re` (single marker or array of markers) alike.
-  function compile(node) {
-    if (Array.isArray(node)) return node.map(compile);
+  // version rule's `re` (single marker or array of markers) alike. Exported as
+  // compileSignatures so the popup can compile remotely-fetched raw data with
+  // the SAME logic — one compiler, no duplication.
+  function compileSignatures(node) {
+    if (Array.isArray(node)) return node.map(compileSignatures);
     if (node && typeof node === "object") {
       if (typeof node.$re === "string") return new RegExp(node.$re, node.flags || "");
       const out = {};
-      for (const k of Object.keys(node)) out[k] = compile(node[k]);
+      for (const k of Object.keys(node)) out[k] = compileSignatures(node[k]);
       return out;
     }
     return node;
@@ -1118,13 +1120,18 @@
       ? require("./signatures.json")
       : RAW_INLINE;
 
-  const SIGNATURES = compile(RAW);
+  const SIGNATURES = compileSignatures(RAW);
 
-  // Expose the raw (uncompiled) inline data non-enumerably so consumers that
-  // iterate SIGNATURES as the tech list (Object.entries) never see it, but the
-  // drift test can still reach it.
+  // Expose the raw (uncompiled) inline data and the compiler non-enumerably so
+  // consumers that iterate SIGNATURES as the tech list (Object.entries) never
+  // see them, but the drift test and the popup's remote-merge can still reach
+  // them.
   Object.defineProperty(SIGNATURES, "_raw", { value: RAW_INLINE, enumerable: false });
+  Object.defineProperty(SIGNATURES, "compile", { value: compileSignatures, enumerable: false });
 
   root.WA_SIGNATURES = SIGNATURES;
+  // Standalone global so the popup can compile remote data without reaching into
+  // the signatures object.
+  root.WA_compileSignatures = compileSignatures;
   if (typeof module !== "undefined" && module.exports) module.exports = SIGNATURES;
 })(typeof globalThis !== "undefined" ? globalThis : this);

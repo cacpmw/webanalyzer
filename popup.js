@@ -550,6 +550,26 @@ const runDeepScan = (tabId) =>
     )
   );
 
+// Cached remote signatures, compiled to RegExp, or null. Goes through the
+// background, which returns whatever it already cached and never blocks on a
+// live fetch — so this resolves in one message round-trip. Compiled with the
+// SAME compiler the signatures loader uses (no duplication). Any failure →
+// null, and detection falls back to the embedded TechDetector.SIGNATURES.
+const getRemoteSignatures = () =>
+  new Promise((res) =>
+    chrome.runtime.sendMessage({ action: "getSignatures" }, (resp) => {
+      if (chrome.runtime.lastError || !resp || !resp.ok || !resp.data) return res(null);
+      try {
+        const compile =
+          (typeof WA_compileSignatures !== "undefined" && WA_compileSignatures) ||
+          (TechDetector.SIGNATURES && TechDetector.SIGNATURES.compile);
+        res(compile ? compile(resp.data) : null);
+      } catch (e) {
+        res(null);
+      }
+    })
+  );
+
 async function run() {
   const tab = await getActiveTab();
   currentTab = tab;
@@ -568,9 +588,10 @@ async function run() {
   try { hostname = new URL(tab.url).hostname; } catch (e) {}
   els.host.textContent = hostname;
 
-  const [signals, headerData] = await Promise.all([
+  const [signals, headerData, remoteSignatures] = await Promise.all([
     getPageSignals(tab.id),
     getHeaders(tab.id, tab.url),
+    getRemoteSignatures(),
   ]);
   currentSignals = signals;
 
@@ -605,7 +626,12 @@ async function run() {
     return;
   }
 
-  const techs = TechDetector.detect(safeSignals, headerData);
+  // Merge valid remote signatures OVER the embedded set; remote only ever adds
+  // or overrides. With no remote data, this is exactly the embedded behaviour.
+  const signatureSet = remoteSignatures
+    ? Object.assign({}, TechDetector.SIGNATURES, remoteSignatures)
+    : TechDetector.SIGNATURES;
+  const techs = TechDetector.detect(safeSignals, headerData, signatureSet);
   currentTechs = techs;
   // Record the detection outcome so a "nothing detected" result is diagnosable
   // from the exported log (every other subsystem logs; stack didn't). Compact

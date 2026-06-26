@@ -10,6 +10,16 @@ importScripts("detectors/vuln-scanner.js");
 
 const KEY = (tabId) => `tab_${tabId}`;
 
+// --- Remote signature updates --------------------------------------------
+// Lets new platform signatures ship without a Web Store republish. Remote data
+// is treated as DATA ONLY: parsed as JSON, shape-validated, then compiled to
+// RegExp by the popup's local compiler — never eval'd. The embedded signatures
+// remain the always-works fallback; the network is never on detection's path.
+const REMOTE_SIGNATURES_URL =
+  "https://raw.githubusercontent.com/cacpmw/webanalyzer/main/detectors/signatures.json";
+const SIG_CACHE_KEY = "sigcache:v1"; // { fetchedAt, data }
+const SIG_TTL_MS = 24 * 60 * 60 * 1000; // refresh at most once per day
+
 // True when the string looks like an IPv6 address (contains colons).
 function isIpv6(ip) {
   return typeof ip === "string" && ip.includes(":");
@@ -503,6 +513,68 @@ async function runVulnScan(technologies, tabId) {
   return { ok: true, findings, scanned: wrappers.length };
 }
 
+// Shape-validate remote signature data before trusting it. Strict on purpose:
+// a 404 HTML page parsed as text, an array, or {} must all fail so we never
+// cache or merge garbage. A value passes only if it is a non-empty plain object
+// whose every entry is an object carrying at least one known signature field.
+const SIG_FIELDS = ["category", "html", "scripts", "cookies", "headers", "meta", "globals", "implies", "version"];
+function validateSignatures(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  const names = Object.keys(obj);
+  if (names.length === 0) return false;
+  return names.every((name) => {
+    const sig = obj[name];
+    if (!sig || typeof sig !== "object" || Array.isArray(sig)) return false;
+    return SIG_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(sig, f));
+  });
+}
+
+// Fetch + cache the remote signature JSON. Returns the RAW form (regex still as
+// { $re, flags } strings) — the popup compiles it. Never throws, never caches
+// invalid data; on any failure it falls back to whatever cache already exists.
+async function refreshSignatures(force) {
+  let cache = null;
+  try {
+    const r = await chrome.storage.local.get(SIG_CACHE_KEY);
+    cache = r[SIG_CACHE_KEY] || null;
+  } catch (e) {}
+
+  const now = Date.now();
+  if (!force && cache && cache.fetchedAt && now - cache.fetchedAt < SIG_TTL_MS) {
+    return cache.data; // fresh — no network
+  }
+
+  try {
+    const resp = await fetch(REMOTE_SIGNATURES_URL, { credentials: "omit", cache: "no-store" });
+    if (!resp.ok) {
+      await Logger.append(null, "sig", `sig remote → ${resp.status}`, null);
+      return cache ? cache.data : null;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(await resp.text());
+    } catch (e) {
+      await Logger.append(null, "sig", "sig remote → parse error", e.message);
+      return cache ? cache.data : null;
+    }
+
+    if (!validateSignatures(parsed)) {
+      await Logger.append(null, "sig", "sig remote → invalid shape", null);
+      return cache ? cache.data : null;
+    }
+
+    try {
+      await chrome.storage.local.set({ [SIG_CACHE_KEY]: { fetchedAt: now, data: parsed } });
+    } catch (e) {}
+    await Logger.append(null, "sig", `sig remote → updated (${Object.keys(parsed).length} signatures)`, null);
+    return parsed;
+  } catch (e) {
+    await Logger.append(null, "sig", "sig remote → network error", e.message);
+    return cache ? cache.data : null;
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getHeaders") {
     getTab(request.tabId).then(async (data) => {
@@ -580,10 +652,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then((result) => sendResponse(result));
     return true;
   }
+  if (request.action === "getSignatures") {
+    // Hands back cached remote signatures (raw { $re, flags } form) without
+    // blocking on a live fetch; data is null when nothing is cached yet.
+    refreshSignatures(false).then((data) => sendResponse({ ok: true, data: data || null }));
+    return true;
+  }
   return false;
 });
 
+// Warm the signature cache opportunistically on worker startup, fire-and-forget.
+// Nothing blocks on it; a failure is swallowed so detection is never affected.
+refreshSignatures(false).catch(() => {});
+
 // Exposed for unit tests; harmless in the service worker (module is undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { sendToN8n, runVulnScan };
+  module.exports = { sendToN8n, runVulnScan, validateSignatures, refreshSignatures };
 }
