@@ -9,6 +9,16 @@ const TechDetector = require("../detectors/tech-detector.js");
 // Convenience: find a detected tech by name in the result array.
 const find = (list, name) => list.find((t) => t.name === name);
 
+describe("TechDetector — signature wiring", () => {
+  it("loads signatures from the external signatures module", () => {
+    expect(typeof TechDetector.SIGNATURES).toBe("object");
+    expect(Object.keys(TechDetector.SIGNATURES).length).toBeGreaterThan(0);
+    for (const key of ["WordPress", "Shopify", "VNDA"]) {
+      expect(TechDetector.SIGNATURES[key]).toBeDefined();
+    }
+  });
+});
+
 describe("TechDetector.detect — detection by each signal type", () => {
   it("detects Nginx from the Server header and extracts the version", () => {
     const result = TechDetector.detect({}, { headers: { server: "nginx/1.2" } });

@@ -38,6 +38,7 @@ const ALLOWLIST = [
   "options.js",
   "options.html",
   "design-system.css",
+  "detectors/signatures.js",
   "detectors/tech-detector.js",
   "detectors/network-detector.js",
   "detectors/vuln-scanner.js",
