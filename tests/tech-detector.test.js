@@ -17,6 +17,23 @@ describe("TechDetector — signature wiring", () => {
       expect(TechDetector.SIGNATURES[key]).toBeDefined();
     }
   });
+
+  it("compiles regex sources from the signature data", () => {
+    // The JSON stores regex as { $re, flags } strings; the loader must compile
+    // them back into live RegExp with source AND flags preserved verbatim.
+    const re = TechDetector.SIGNATURES.VNDA.html[0];
+    expect(re).toBeInstanceOf(RegExp);
+    expect(re.source).toBe("cdn\\.vnda\\.com\\.br");
+    expect(re.flags).toBe("i");
+  });
+
+  it("signatures.json and the inline browser data are in sync", () => {
+    // The popup/content-script path compiles from the inline RAW copy while
+    // Node compiles from signatures.json — they must hold identical data.
+    const signatures = require("../detectors/signatures.js");
+    const json = require("../detectors/signatures.json");
+    expect(signatures._raw).toEqual(json);
+  });
 });
 
 describe("TechDetector.detect — detection by each signal type", () => {
