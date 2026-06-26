@@ -1,6 +1,6 @@
 {
   "name": "webanalyzer",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "WebAnalyzer browser extension",
   "private": true,
   "scripts": {
