@@ -645,13 +645,15 @@
     },
     "Font Awesome": {
       "category": "Font Script",
+      "scripts": [
+        {
+          "$re": "(kit|use)\\.fontawesome\\.com",
+          "flags": "i"
+        }
+      ],
       "html": [
         {
           "$re": "font-?awesome",
-          "flags": "i"
-        },
-        {
-          "$re": "fa-[a-z]+",
           "flags": "i"
         }
       ]

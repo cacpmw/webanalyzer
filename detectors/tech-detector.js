@@ -24,9 +24,11 @@ const TechDetector = (() => {
   // unique external resource (CDN host, service URL). A match means the tech is
   // certainly present, so it reports 100% confidence regardless of signal tier.
   // Deliberately EXCLUDES heuristic detections (CSS class-name guesses, generic
-  // words like "magento"/"woocommerce", "fa-" icons) which keep their weight, so
-  // the score still flags the genuinely-uncertain ones. WordPress is omitted on
-  // purpose: it reaches 100% via its version / deep-scan confirmation.
+  // words like "magento"/"woocommerce") which keep their weight, so the score
+  // still flags the genuinely-uncertain ones. Font Awesome qualifies only now
+  // that its ambiguous "fa-" class signal was dropped — it matches solely on its
+  // dedicated host or an explicit "font-awesome" reference. WordPress is omitted
+  // on purpose: it reaches 100% via its version / deep-scan confirmation.
   const CONFIDENT_TECHS = new Set([
     "Drupal", "Joomla", "Squarespace", "Wix", "Webflow",
     "Shopify", "BigCommerce",
@@ -34,7 +36,7 @@ const TechDetector = (() => {
     "Salesforce Commerce Cloud",
     "React", "Next.js", "Vue.js", "Nuxt.js", "Angular", "Svelte",
     "Gatsby", "Remix", "Alpine.js", "jQuery", "Lodash",
-    "Google Fonts", "Elementor",
+    "Google Fonts", "Font Awesome", "Elementor",
     "PHP", "ASP.NET", "Node.js", "Express.js", "Ruby on Rails", "Java", "Laravel",
     "Google Tag Manager", "Google Analytics", "Facebook Pixel", "Hotjar",
     "Stripe", "PayPal",

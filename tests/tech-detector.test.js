@@ -96,6 +96,41 @@ describe("TechDetector.detect — detection by each signal type", () => {
     expect(tw.confidence).toBe(70); // heuristic — stays weighted
   });
 
+  it("detects Font Awesome at 100% from a kit.fontawesome.com script src", () => {
+    const result = TechDetector.detect(
+      { scripts: ["https://kit.fontawesome.com/abc123.js"] },
+      null
+    );
+    const fa = find(result, "Font Awesome");
+    expect(fa).toBeDefined();
+    expect(fa.confidence).toBe(100); // dedicated host → certain
+  });
+
+  it("detects Font Awesome at 100% from a use.fontawesome.com script src", () => {
+    const result = TechDetector.detect(
+      { scripts: ["https://use.fontawesome.com/releases/v5.15.4/js/all.js"] },
+      null
+    );
+    const fa = find(result, "Font Awesome");
+    expect(fa).toBeDefined();
+    expect(fa.confidence).toBe(100);
+  });
+
+  it("detects Font Awesome at 100% from an explicit font-awesome html reference", () => {
+    const result = TechDetector.detect(
+      { html: '<link rel="stylesheet" href="/vendor/font-awesome/all.min.css">' },
+      null
+    );
+    const fa = find(result, "Font Awesome");
+    expect(fa).toBeDefined();
+    expect(fa.confidence).toBe(100);
+  });
+
+  it("does NOT detect Font Awesome from an fa- icon class alone (too ambiguous)", () => {
+    const result = TechDetector.detect({ html: '<i class="fa-solid fa-house"></i>' }, null);
+    expect(find(result, "Font Awesome")).toBeUndefined();
+  });
+
   it("detects jQuery from a script src and extracts the version", () => {
     const result = TechDetector.detect(
       { scripts: ["https://code.jquery.com/jquery-3.6.0.min.js"] },
