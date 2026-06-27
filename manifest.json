@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WebAnalyzer",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "default_locale": "en",
   "description": "__MSG_ext_desc__",
   "permissions": [
