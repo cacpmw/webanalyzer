@@ -336,6 +336,80 @@ async function geoLookup(ip, tabId) {
   return null;
 }
 
+// Parse an "AS#### Org Name" string (e.g. ip-api's `as` field) into
+// { asn, org }. No AS prefix → { asn:null, org:<original> }; empty/garbage →
+// { asn:null, org:null }. Pure, exported for tests.
+function parseAsString(s) {
+  if (!s || typeof s !== "string") return { asn: null, org: null };
+  const trimmed = s.trim();
+  if (!trimmed) return { asn: null, org: null };
+  const m = trimmed.match(/^AS(\d+)\s*(.*)$/i);
+  if (!m) return { asn: null, org: trimmed };
+  const org = m[2].trim();
+  return { asn: Number(m[1]), org: org || null };
+}
+
+// ASN / hosting-provider lookup for an origin IP. Mirrors geoLookup: permanent
+// per-IP cache (IP→ASN allocation is stable), multi-provider with graceful
+// fallback, never throws. Only meaningful for origin IPs — callers must skip it
+// when the site is behind a CDN/WAF, where the IP is the edge, not the host.
+async function asnLookup(ip, tabId) {
+  if (!ip) return { asn: null, org: null };
+  const key = `asncache:${ip}`;
+  try {
+    const cached = await chrome.storage.local.get(key);
+    if (cached[key]) {
+      await Logger.append(tabId, "hosting", `asn cache hit for ${ip}`, cached[key]);
+      return cached[key];
+    }
+  } catch (e) {}
+
+  const providers = [
+    // ipwho.is — connection.asn (number) + connection.org / .isp.
+    async () => {
+      const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
+      const d = await r.json().catch(() => null);
+      await Logger.append(tabId, "hosting", `ipwho.is asn ${ip} [${r.status}]`, d);
+      const c = d && d.success !== false && d.connection;
+      if (c && (c.org || c.isp)) {
+        return { asn: c.asn != null ? Number(c.asn) : null, org: c.org || c.isp };
+      }
+      return null;
+    },
+    // ip-api.com — `as` is an "AS#### Name" string; isp/org are plain names.
+    async () => {
+      const r = await fetch(
+        `https://ip-api.com/json/${encodeURIComponent(ip)}?fields=as,asname,isp,org,status`
+      );
+      const d = await r.json().catch(() => null);
+      await Logger.append(tabId, "hosting", `ip-api asn ${ip} [${r.status}]`, d);
+      if (d && d.status === "success") {
+        const parsed = parseAsString(d.as);
+        const org = d.org || d.isp || parsed.org;
+        if (org) return { asn: parsed.asn, org };
+      }
+      return null;
+    },
+  ];
+
+  let result = { asn: null, org: null };
+  for (const provider of providers) {
+    try {
+      const r = await provider();
+      if (r && r.org) { result = r; break; }
+    } catch (e) {
+      await Logger.append(tabId, "hosting", `provider error for ${ip}`, e.message);
+    }
+  }
+
+  await Logger.append(tabId, "hosting", `asn ${ip} → ${result.org || "unknown"} [${result.org ? "ok" : "none"}]`, result);
+  // Only cache real answers; never poison the cache with a transient miss.
+  if (result.org) {
+    try { await chrome.storage.local.set({ [key]: result }); } catch (e) {}
+  }
+  return result;
+}
+
 // Sends the analysis payload to the user's n8n webhook and returns its report.
 // Kept self-contained (only Logger.append + fetch) so it can be unit-tested in
 // isolation from the chrome.* surface around it.
@@ -624,6 +698,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     geoLookup(request.ip, request.tabId).then((r) => sendResponse(r));
     return true;
   }
+  if (request.action === "asnLookup") {
+    asnLookup(request.ip, request.tabId).then((r) => sendResponse({ ok: true, data: r }));
+    return true;
+  }
   if (request.action === "whois") {
     whoisLookup(request.domain, request.tabId).then((r) => sendResponse(r));
     return true;
@@ -667,5 +745,5 @@ refreshSignatures(false).catch(() => {});
 
 // Exposed for unit tests; harmless in the service worker (module is undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { sendToN8n, runVulnScan, validateSignatures, refreshSignatures };
+  module.exports = { sendToN8n, runVulnScan, validateSignatures, refreshSignatures, asnLookup, parseAsString };
 }

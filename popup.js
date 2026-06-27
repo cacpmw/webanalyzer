@@ -61,6 +61,8 @@ let currentTechs = [];
 let currentHeaders = null; // { configured, missing, misconfigured } from analyzeHeaders
 let currentDnsExport = null; // { zone, byType } for the BIND export
 let currentIp = null; // resolved IP of the current host (for the AI payload)
+let currentHosting = null; // { asn, org } once the ASN lookup resolves (origin only)
+let lastServerRender = null; // { summary, behindCdn } so async fills can re-render
 let currentWhois = null; // raw WHOIS data once the WHOIS tab has loaded
 let aiCurrentReport = null; // text of the last generated report
 let aiCurrentType = null; // report type key of the last request
@@ -165,6 +167,10 @@ function renderState(container, message, hint) {
 // --- Renderers -----------------------------------------------------------
 
 function renderServer(summary, behindCdn) {
+  // Remember the inputs so the async hosting fill can re-render this panel with
+  // the latest summary (IP may still be resolving via DNS fallback).
+  lastServerRender = { summary, behindCdn };
+
   const proxyNote = behindCdn
     ? `<span class="kv-hint">${escapeHtml(tr("server_cdn_note"))}</span>`
     : summary.fromCache ? `<span class="kv-hint">${escapeHtml(tr("server_dns_note"))}</span>` : "";
@@ -172,11 +178,22 @@ function renderServer(summary, behindCdn) {
     ? `${escapeHtml(summary.ip)}<span id="stack-ip-flag" class="ip-flag-slot"></span>${proxyNote}`
     : `<span class="kv-val empty">${escapeHtml(tr("server_resolving"))}</span>`;
 
+  // Hosting row: the real provider when we resolved one from the origin IP; or
+  // a masking note (no value lookup) when a CDN/WAF sits in front of the origin.
+  const hostingVal = behindCdn
+    ? `<span class="kv-hint">${escapeHtml(tr("hosting_behind_cdn"))}</span>`
+    : currentHosting && currentHosting.org
+    ? `${escapeHtml(currentHosting.org)}${
+        currentHosting.asn ? `<span class="kv-hint">AS${escapeHtml(String(currentHosting.asn))}</span>` : ""
+      }`
+    : null;
+
   // Hide any row whose value the server didn't expose, rather than showing a
   // permanent "not exposed". IP is always shown (it carries its own resolving
   // state while DNS fallback runs).
   const rows = [
     ["IP", ipVal, true],
+    ...(hostingVal ? [[tr("hosting_label"), hostingVal, true]] : []),
     ...(summary.server ? [["Server", summary.server, false]] : []),
     ...(summary.poweredBy ? [["Powered-By", summary.poweredBy, false]] : []),
     ...(summary.via ? [["Via", summary.via, false]] : []),
@@ -230,6 +247,25 @@ function renderProtection(services) {
       </div>`
     )
     .join("");
+}
+
+// Resolve the origin's hosting provider (ASN/org) and show it — but only when
+// the site is NOT behind a CDN/WAF. Behind an edge the IP is the CDN's, so a
+// lookup would return the CDN's ASN (already known from protection detection)
+// and mislead. Passive: queries an IP-info API about an already-resolved IP,
+// never the target site. On no org, renders nothing (silence over false data).
+function maybeLookupHosting(ip, behindCdn) {
+  if (behindCdn || !ip) return;
+  chrome.runtime.sendMessage(
+    { action: "asnLookup", ip, tabId: currentTab && currentTab.id },
+    (resp) => {
+      if (chrome.runtime.lastError) return;
+      if (resp && resp.ok && resp.data && resp.data.org && lastServerRender) {
+        currentHosting = resp.data;
+        renderServer(lastServerRender.summary, lastServerRender.behindCdn);
+      }
+    }
+  );
 }
 
 function renderWordPress(signals, techs, deep) {
@@ -611,7 +647,11 @@ async function run() {
         currentIp = ip;
         renderServer({ ...summary, ip, fromCache: true }, behindCdn);
       }
+      // Look up hosting against the final IP (origin sites only).
+      maybeLookupHosting(currentIp, behindCdn);
     });
+  } else {
+    maybeLookupHosting(currentIp, behindCdn);
   }
 
   const safeSignals = signals || {

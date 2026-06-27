@@ -66,6 +66,8 @@
   "server_cdn_note": { "message": "(borda da CDN, não a origem)" },
   "server_dns_note": { "message": "(via DNS)" },
   "server_cors_note": { "message": "cabeçalhos lidos por requisição direta — alguns podem estar ocultos por CORS" },
+  "hosting_label": { "message": "Hospedagem" },
+  "hosting_behind_cdn": { "message": "A hospedagem de origem está mascarada pelo CDN/WAF." },
 
   "wp_version": { "message": "Versão" },
   "wp_theme": { "message": "Tema" },

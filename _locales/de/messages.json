@@ -66,6 +66,8 @@
   "server_cdn_note": { "message": "(CDN-Edge, nicht Ursprung)" },
   "server_dns_note": { "message": "(über DNS)" },
   "server_cors_note": { "message": "Header über direkte Anfrage gelesen — einige sind ggf. durch CORS verborgen" },
+  "hosting_label": { "message": "Hosting" },
+  "hosting_behind_cdn": { "message": "Origin-Hosting wird vom CDN/WAF verdeckt." },
 
   "wp_version": { "message": "Version" },
   "wp_theme": { "message": "Theme" },
